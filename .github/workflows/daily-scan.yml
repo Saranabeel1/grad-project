@@ -2,13 +2,18 @@ name: daily-scan
 
 # Runs our five scanners on a few public projects once a day, by itself.
 # Nobody has to change any code: the projects' owners keep changing them,
-# so each day's results are new. Results are saved as files on each run
-# ("artifacts"); scripts/fetch_daily.py brings them into the portal.
+# so each day's results are new. Results are sent straight to the portal when the
+# PORTAL_URL and PORTAL_API_KEY secrets are set (real-time push), and are always saved
+# as files ("artifacts") that scripts/fetch_daily.py can bring in later.
 
 on:
   schedule:
-    - cron: "0 4 * * *"   # every day at 04:00 UTC (07:00 in Saudi Arabia)
+    - cron: "17 * * * *"  # every hour at :17 (GitHub is busiest at :00, so runs start more on time)
   workflow_dispatch:       # the "Run workflow" button, for the demo
+
+concurrency:               # if one run is still going when the next hour starts, the new one waits
+  group: daily-scan
+  cancel-in-progress: false
 
 jobs:
   scan:
@@ -154,10 +159,24 @@ jobs:
         if: always()
         run: ls -la reports
 
+      # Real-time push: the results reach the portal as soon as this project's scan finishes.
+      # Needs two repository secrets: PORTAL_URL (the portal's public address) and PORTAL_API_KEY.
+      # Without them this step only prints a note, and fetch_daily.py / auto-fetch bring the results in.
+      - name: Send results to the portal (real time)
+        if: always()
+        continue-on-error: true
+        env:
+          PORTAL_URL: ${{ secrets.PORTAL_URL }}
+          PORTAL_API_KEY: ${{ secrets.PORTAL_API_KEY }}
+        run: |
+          python portal/scripts/push_reports.py reports --run-id "${{ github.run_id }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --status "${{ job.status }}"
+
       - name: Keep the results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: daily-${{ matrix.alias }}
           path: reports/
-          retention-days: 30
+          retention-days: 7    # hourly runs make many files; the portal already has the results
