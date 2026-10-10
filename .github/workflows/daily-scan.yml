@@ -1,6 +1,6 @@
 name: daily-scan
 
-# Runs our four scanners on a few public projects once a day, by itself.
+# Runs our five scanners on a few public projects once a day, by itself.
 # Nobody has to change any code: the projects' owners keep changing them,
 # so each day's results are new. Results are saved as files on each run
 # ("artifacts"); scripts/fetch_daily.py brings them into the portal.
@@ -82,6 +82,54 @@ jobs:
       - name: Checkov (IaC)
         continue-on-error: true
         run: checkov -d target --quiet --compact --soft-fail -o json --output-file-path reports
+
+      # SonarQube keeps its results on a server, so we start a fresh one just for this run,
+      # scan the code, save the security results to reports/sonarqube.json, then stop it.
+      - name: Get our scripts (for SonarQube)
+        uses: actions/checkout@v4
+        with:
+          path: portal
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - name: Start SonarQube
+        id: sonar
+        continue-on-error: true
+        run: |
+          sudo sysctl -w vm.max_map_count=262144
+          docker run -d --name sonarqube --network host -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true sonarqube:community
+          for i in $(seq 1 60); do
+            curl -s http://localhost:9000/api/system/status | grep -q '"UP"' && break
+            sleep 5
+          done
+          curl -s http://localhost:9000/api/system/status | grep -q '"UP"' || { docker logs sonarqube | tail -50; exit 1; }
+          # A new random password every run (the server is thrown away at the end), then a token to use it.
+          PW="Pw-$(openssl rand -hex 16)"
+          echo "::add-mask::$PW"
+          curl -sf -u admin:admin -X POST http://localhost:9000/api/users/change_password \
+            --data-urlencode login=admin --data-urlencode previousPassword=admin --data-urlencode "password=$PW"
+          TOKEN=$(curl -sf -u "admin:$PW" -X POST http://localhost:9000/api/user_tokens/generate \
+            -d name=daily-scan -d type=USER_TOKEN | python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          echo "::add-mask::$TOKEN"
+          echo "SONAR_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo "SONAR_PROJECT=$(echo '${{ matrix.alias }}' | tr 'A-Z ' 'a-z-')" >> "$GITHUB_ENV"
+
+      # sonar.java.binaries: Java code is normally built first; an empty folder lets SonarQube scan it unbuilt.
+      - name: SonarQube (SAST)
+        if: steps.sonar.outcome == 'success'
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/no-build
+          docker run --rm --network host -v "$PWD/target:/usr/src" -v /tmp/no-build:/no-build \
+            -e SONAR_HOST_URL=http://localhost:9000 -e SONAR_TOKEN sonarsource/sonar-scanner-cli \
+            -Dsonar.projectKey="$SONAR_PROJECT" -Dsonar.java.binaries=/no-build -Dsonar.scm.disabled=true \
+            -Dsonar.working.directory=/tmp/scannerwork
+          SONAR_HOST_URL=http://localhost:9000 python portal/scripts/export_sonarqube.py \
+            --project "$SONAR_PROJECT" --out reports/sonarqube.json
+
+      - name: Stop SonarQube
+        if: always() && steps.sonar.outcome != 'skipped'
+        run: docker rm -f sonarqube || true
 
       - name: Start the website for ZAP
         if: matrix.image != ''
