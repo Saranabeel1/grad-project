@@ -1,0 +1,112 @@
+name: daily-scan
+
+# Runs our four scanners on a few public projects once a day, by itself.
+# Nobody has to change any code: the projects' owners keep changing them,
+# so each day's results are new. Results are saved as files on each run
+# ("artifacts"); scripts/fetch_daily.py brings them into the portal.
+
+on:
+  schedule:
+    - cron: "0 4 * * *"   # every day at 04:00 UTC (07:00 in Saudi Arabia)
+  workflow_dispatch:       # the "Run workflow" button, for the demo
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false      # one project failing does not stop the others
+      matrix:
+        include:
+          # alias: the name shown in the portal. repo: the public project.
+          # image + url: a running copy of the website, for ZAP (DAST). Leave empty to skip ZAP.
+          - alias: Project G
+            repo: juice-shop/juice-shop
+            image: bkimminich/juice-shop:latest
+            url: http://localhost:3000
+          - alias: Project H
+            repo: WebGoat/WebGoat
+            image: webgoat/webgoat:latest
+            url: http://localhost:8080/WebGoat
+          - alias: Project I
+            repo: GoogleCloudPlatform/microservices-demo
+            image: ""
+            url: ""
+    steps:
+      - name: Get the project's latest code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Remember which version was scanned
+        run: |
+          mkdir -p reports
+          cd target
+          printf '{"alias": "%s", "repo": "%s", "commit_sha": "%s", "branch": "%s", "scanned_at": "%s"}\n' \
+            "${{ matrix.alias }}" "${{ matrix.repo }}" "$(git rev-parse HEAD)" \
+            "$(git rev-parse --abbrev-ref HEAD)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ../reports/target.json
+          cat ../reports/target.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Semgrep and Checkov
+        run: pip install semgrep checkov
+
+      - name: Semgrep (SAST)
+        continue-on-error: true
+        working-directory: target
+        run: semgrep scan --config p/default --metrics=off --json --output ../reports/semgrep.json .
+
+      - name: Trivy on the code (SCA + IaC)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/work" aquasec/trivy:latest fs --quiet \
+            --scanners vuln,misconfig --format json --output /work/reports/trivy-code.json /work/target
+
+      - name: Trivy on the released app (SCA)
+        if: matrix.image != ''
+        continue-on-error: true
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" aquasec/trivy:latest \
+            image --quiet --scanners vuln --format json --output /work/reports/trivy-app.json ${{ matrix.image }}
+
+      - name: Checkov (IaC)
+        continue-on-error: true
+        run: checkov -d target --quiet --compact --soft-fail -o json --output-file-path reports
+
+      - name: Start the website for ZAP
+        if: matrix.image != ''
+        run: |
+          docker run -d --name app --network host ${{ matrix.image }}
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null "${{ matrix.url }}" && echo "website is up" && exit 0
+            sleep 5
+          done
+          echo "website did not start"; docker logs app | tail -50; exit 1
+
+      - name: ZAP (DAST)
+        if: matrix.image != ''
+        continue-on-error: true
+        run: |
+          chmod 777 reports
+          docker run --rm --network host -v "$PWD/reports:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t "${{ matrix.url }}" -J zap.json -I -m 3
+
+      - name: What was saved
+        if: always()
+        run: ls -la reports
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-${{ matrix.alias }}
+          path: reports/
+          retention-days: 30
