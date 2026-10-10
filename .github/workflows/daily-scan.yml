@@ -1,22 +1,70 @@
 name: daily-scan
 
-# Runs our five scanners on a few public projects once a day, by itself.
-# Nobody has to change any code: the projects' owners keep changing them,
-# so each day's results are new. Results are sent straight to the portal when the
-# PORTAL_URL and PORTAL_API_KEY secrets are set (real-time push), and are always saved
-# as files ("artifacts") that scripts/fetch_daily.py can bring in later.
+# Runs our five scanners on a few public projects whenever one of them gets a new commit, by itself.
+# The projects belong to other people, so GitHub cannot tell us when they push. Instead a quick check
+# runs every 15 minutes, compares each project's latest commit with the last one we scanned, and only
+# scans the projects that changed. Nobody has to change any code: the owners keep pushing, so results stay new.
+# Results are sent straight to the portal when the PORTAL_URL and PORTAL_API_KEY secrets are set
+# (real-time push), and are always saved as files ("artifacts") that scripts/fetch_daily.py can bring in later.
 
 on:
   schedule:
-    - cron: "17 * * * *"  # every hour at :17 (GitHub is busiest at :00, so runs start more on time)
-  workflow_dispatch:       # the "Run workflow" button, for the demo
+    - cron: "7,22,37,52 * * * *"  # every 15 minutes (GitHub is busiest at :00, so runs start more on time)
+  workflow_dispatch:               # the "Run workflow" button, for the demo: always scans every project
 
-concurrency:               # if one run is still going when the next hour starts, the new one waits
+concurrency:               # if one run is still going when the next one starts, the new one waits
   group: daily-scan
   cancel-in-progress: false
 
 jobs:
+  # Which projects have a commit we have not scanned yet? Takes a few seconds.
+  # A scanned commit is remembered as a small cache entry named scanned-<project>-<commit>.
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read           # to look up the cache entries
+    outputs:
+      todo: ${{ steps.new.outputs.todo }}
+    steps:
+      - name: Look for new commits
+        id: new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' }}
+          # alias: the name shown in the portal. repo: the public project.
+          # image + url: a running copy of the website, for ZAP (DAST). Leave empty to skip ZAP.
+          PROJECTS: |
+            [
+              {"alias": "Project G", "repo": "juice-shop/juice-shop",
+               "image": "bkimminich/juice-shop:latest", "url": "http://localhost:3000"},
+              {"alias": "Project H", "repo": "WebGoat/WebGoat",
+               "image": "webgoat/webgoat:latest", "url": "http://localhost:8080/WebGoat"},
+              {"alias": "Project I", "repo": "GoogleCloudPlatform/microservices-demo",
+               "image": "", "url": ""}
+            ]
+        run: |
+          todo='[]'
+          while read -r p; do
+            alias=$(jq -r .alias <<< "$p"); repo=$(jq -r .repo <<< "$p")
+            sha=$(git ls-remote "https://github.com/$repo" HEAD | cut -f1)
+            slug=$(tr 'A-Z ' 'a-z-' <<< "$alias")
+            key="scanned-$slug-$sha"
+            seen=$(gh cache list --repo "$GITHUB_REPOSITORY" --key "$key" --json key --jq length)
+            if [ -z "$sha" ]; then
+              echo "$alias: could not read the latest commit, skipped"
+            elif [ "$FORCE" = true ] || [ "$seen" = 0 ]; then
+              echo "$alias: new commit ${sha:0:7}, will scan"
+              todo=$(jq -c --argjson p "$p" --arg sha "$sha" --arg key "$key" '. + [$p + {sha: $sha, key: $key}]' <<< "$todo")
+            else
+              echo "$alias: ${sha:0:7} already scanned, nothing to do"
+            fi
+          done < <(jq -c '.[]' <<< "$PROJECTS")
+          echo "todo=$todo" >> "$GITHUB_OUTPUT"
+
   scan:
+    name: scan ${{ matrix.alias }}
+    needs: check
+    if: needs.check.outputs.todo != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -24,21 +72,7 @@ jobs:
     strategy:
       fail-fast: false      # one project failing does not stop the others
       matrix:
-        include:
-          # alias: the name shown in the portal. repo: the public project.
-          # image + url: a running copy of the website, for ZAP (DAST). Leave empty to skip ZAP.
-          - alias: Project G
-            repo: juice-shop/juice-shop
-            image: bkimminich/juice-shop:latest
-            url: http://localhost:3000
-          - alias: Project H
-            repo: WebGoat/WebGoat
-            image: webgoat/webgoat:latest
-            url: http://localhost:8080/WebGoat
-          - alias: Project I
-            repo: GoogleCloudPlatform/microservices-demo
-            image: ""
-            url: ""
+        include: ${{ fromJSON(needs.check.outputs.todo) }}
     steps:
       - name: Get the project's latest code
         uses: actions/checkout@v4
@@ -180,3 +214,11 @@ jobs:
           name: daily-${{ matrix.alias }}
           path: reports/
           retention-days: 7    # hourly runs make many files; the portal already has the results
+
+      # Remember this commit as scanned, so the 15-minute check skips it until the project changes again.
+      - name: Remember this commit was scanned
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: reports/target.json
+          key: ${{ matrix.key }}
