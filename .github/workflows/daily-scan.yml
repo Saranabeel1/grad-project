@@ -64,10 +64,12 @@ jobs:
         working-directory: target
         run: semgrep scan --config p/default --metrics=off --json --output ../reports/semgrep.json .
 
+      # --offline-scan: do not ask Maven Central about Java libraries; it blocks GitHub's machines
+      # when too many ask at once ("429 Too Many Requests"). Trivy's own list of known problems is still used.
       - name: Trivy on the code (SCA + IaC)
         continue-on-error: true
         run: |
-          docker run --rm -v "$PWD:/work" aquasec/trivy:latest fs --quiet \
+          docker run --rm -v "$PWD:/work" aquasec/trivy:latest fs --quiet --offline-scan \
             --scanners vuln,misconfig --format json --output /work/reports/trivy-code.json /work/target
 
       - name: Trivy on the released app (SCA)
