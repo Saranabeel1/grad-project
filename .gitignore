@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+*.db
+.venv/
+node_modules/
+dist/
+semgrep.json
+.DS_Store
+
+# holds the real names of Projects A-F: keep it on your PC only (the repo is public)
+scripts/fetch_live.py
+
+# scan results from your projects (commit ids could point back to the real repos)
+live-data/
+backend/live-data/

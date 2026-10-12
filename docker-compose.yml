@@ -1,0 +1,33 @@
+# Local development stack: PostgreSQL + FastAPI backend.
+# Start with:  docker compose up --build
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portal_dev_password}
+      POSTGRES_DB: portal
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg2://portal:${POSTGRES_PASSWORD:-portal_dev_password}@db:5432/portal
+      PORTAL_API_KEY: ${PORTAL_API_KEY:-dev-change-me}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
