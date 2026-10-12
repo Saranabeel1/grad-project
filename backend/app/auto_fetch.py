@@ -23,7 +23,8 @@ def settings() -> dict | None:
     return {
         "repo": repo,
         "hours": float(os.getenv("AUTO_FETCH_HOURS", "6")),
-        "url": os.getenv("AUTO_FETCH_PORTAL_URL", "http://127.0.0.1:8000"),
+        # the backend itself; hosting services such as Render choose the port in $PORT
+        "url": os.getenv("AUTO_FETCH_PORTAL_URL", f"http://127.0.0.1:{os.getenv('PORT', '8000')}"),
         "key": os.getenv("PORTAL_API_KEY"),
     }
 
