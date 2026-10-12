@@ -8,13 +8,16 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 def clean_url(url: str) -> str:
     """Accepts the connection string as copied from Neon's Connect box, even with
-    "psql" in front, quotes around it or spaces, and the short postgres:// form."""
+    "psql" in front, quotes around it or spaces, and other postgres:// forms."""
     url = url.strip()
     if url.startswith("psql"):
         url = url[4:].strip()
     url = url.strip("'\"").strip()
-    if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+    # We install the psycopg2 driver (requirements.txt). Name it in the URL, because newer
+    # SQLAlchemy versions pick the psycopg (3) driver for a plain postgresql:// address.
+    for prefix in ("postgres://", "postgresql://", "postgresql+psycopg://", "postgresql+asyncpg://"):
+        if url.startswith(prefix):
+            url = "postgresql+psycopg2://" + url[len(prefix):]
     return url
 
 
