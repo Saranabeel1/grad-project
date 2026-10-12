@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.db
+**/.env
+backend/live-data
+live-data
+scripts/fetch_live.py
+.git
