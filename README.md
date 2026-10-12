@@ -239,9 +239,9 @@ Other commands:
 
 ```
 .venv\Scripts\python.exe -m app.users list
-.venv\Scripts\python.exe -m app.users password name@cyberani.sa
-.venv\Scripts\python.exe -m app.users projects name@cyberani.sa "Project G,Project H"
-.venv\Scripts\python.exe -m app.users remove name@cyberani.sa
+.venv\Scripts\python.exe -m app.users password name@gmail.com
+.venv\Scripts\python.exe -m app.users projects name@gmail.com "Project G,Project H"
+.venv\Scripts\python.exe -m app.users remove name@gmail.com
 ```
 
 In PowerShell use `$env:DATABASE_URL="sqlite:///./daily.db"` instead of the `set` line.
