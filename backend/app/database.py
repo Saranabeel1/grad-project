@@ -4,7 +4,21 @@ import os
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
+
+
+def clean_url(url: str) -> str:
+    """Accepts the connection string as copied from Neon's Connect box, even with
+    "psql" in front, quotes around it or spaces, and the short postgres:// form."""
+    url = url.strip()
+    if url.startswith("psql"):
+        url = url[4:].strip()
+    url = url.strip("'\"").strip()
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    return url
+
+
+DATABASE_URL = clean_url(os.getenv("DATABASE_URL", "sqlite:///./dev.db"))
 
 # SQLite needs this flag because FastAPI uses several threads.
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
