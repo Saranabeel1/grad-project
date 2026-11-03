@@ -1,7 +1,12 @@
 import { SEVERITIES, type Dashboard } from './api'
 
 export function toolName(tool: string): string {
-  const names: Record<string, string> = { semgrep: 'Semgrep', trivy: 'Trivy', checkov: 'Checkov', zap: 'ZAP', sonarqube: 'SonarQube' }
+  const names: Record<string, string> = {
+    semgrep: 'Semgrep', sonarqube: 'SonarQube', codeql: 'CodeQL', bearer: 'Bearer', bandit: 'Bandit',
+    trivy: 'Trivy', 'osv-scanner': 'OSV-Scanner', grype: 'Grype', 'dependency-check': 'Dependency-Check',
+    'dependency-track': 'Dependency-Track', zap: 'ZAP', nuclei: 'Nuclei', wapiti: 'Wapiti', nikto: 'Nikto', dastardly: 'Dastardly',
+    checkov: 'Checkov', kics: 'KICS', kubescape: 'Kubescape', conftest: 'Conftest', hadolint: 'Hadolint',
+  }
   return names[tool] ?? tool
 }
 
