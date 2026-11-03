@@ -81,14 +81,14 @@ Without the secrets the workflow still scans and uploads `semgrep.json` as an ar
 
 ## Daily scans of public projects (our own live data)
 
-`.github/workflows/daily-scan.yml` runs Semgrep, Trivy, Checkov, ZAP and SonarQube on three public projects each time one of them gets a new commit
+`.github/workflows/daily-scan.yml` runs 20 scanners (section 12) on three public projects each time one of them gets a new commit
 (a quick check every 15 minutes compares each project's latest commit with the last one scanned; unchanged projects are skipped)
 (Juice Shop, WebGoat, Online Boutique; shown as Project G, H, I). ZAP scans a running copy of the website,
 started inside the job. Each project's reports are saved as an artifact named `daily-<alias>`.
 A **Security Gate** step (`scripts/security_gate.py`) then fails the run when there is any Critical or High finding;
 Medium/Low are warnings only. Results are still sent and saved, and the portal shows the run as failed.
 
-1. Put `daily-scan.yml` in `.github/workflows/` of your GitHub repository (only this file is needed there).
+1. Put `daily-scan.yml` in `.github/workflows/` of your GitHub repository, next to the `scripts/` and `policy/` folders.
 2. Actions tab → *daily-scan* → Run workflow (this always scans all three), or wait: new commits are picked up within about 15 minutes.
 3. On your computer, with the portal running:
    `python scripts/fetch_daily.py --repo YOUR_NAME/YOUR_REPO --send http://localhost:8000 dev-key`
@@ -232,3 +232,64 @@ In PowerShell use `$env:DATABASE_URL="sqlite:///./daily.db"` instead of the `set
 Online: run the same commands with `DATABASE_URL` set to the Neon connection string (section 10, step 5).
 GitHub Actions still sends results with the X-API-Key header, so nothing changes there.
 Set a SESSION_SECRET environment variable when hosting so sign-ins survive restarts.
+
+## 12. The 20 scanners (5 per category)
+
+`daily-scan.yml` runs four jobs at the same time, one per category, then a **report** job that collects their
+reports, runs the Security Gate and sends everything to the portal. One tool failing never stops the others.
+
+| Category | Tools | Notes |
+|---|---|---|
+| SAST (code) | Semgrep, SonarQube, CodeQL, Bearer, Bandit | Bandit only finds Python. CodeQL's results are saved to a file, not uploaded to GitHub's Security tab. |
+| SCA (libraries) | Trivy, OSV-Scanner, Grype, OWASP Dependency-Check, OWASP Dependency-Track | Dependency-Check needs the `NVD_API_KEY` secret (steps below). Dependency-Track runs as a temporary server, like SonarQube. |
+| DAST (running website) | ZAP, Nuclei, Wapiti, Nikto, Dastardly | Only for projects with a website (G and H). Dastardly is Burp Suite's free scanner for pipelines; each scan stops after 10 minutes. |
+| IaC (config files) | Checkov, KICS, Kubescape, Conftest, Hadolint | Hadolint checks Dockerfiles. Trivy's misconfiguration checks also appear under IaC. Conftest uses our own rules in `policy/` (5 for Dockerfiles, 5 for Kubernetes). Kubescape only finds problems in projects with Kubernetes files. |
+
+Leaked passwords and keys are still skipped by every tool (KICS runs with `--disable-secrets`; Bearer's `gitleaks` rule is dropped).
+
+**Left out: OpenVAS (Greenbone).** It needs several services and downloads its vulnerability feed before
+each scan, which can take an hour or more on GitHub's machines and often fails. It is a network scanner
+rather than a web-application scanner, so ZAP, Nuclei, Wapiti, Nikto and Dastardly cover the DAST category instead.
+
+### Turn it on (step by step)
+
+**A. Get a free NVD key** (for OWASP Dependency-Check; everything else works without it)
+1. Open https://nvd.nist.gov/developers/request-an-api-key
+2. Fill in your organisation name and email, choose the organisation type, accept the terms, click **Submit**.
+3. Open the email from NVD and click the link. The page shows your key (letters and numbers with dashes). Copy it.
+
+**B. Add the key to GitHub**
+1. Open your repository on github.com → **Settings** → **Secrets and variables** → **Actions**.
+2. Click **New repository secret**. Name: `NVD_API_KEY`. Secret: paste the key. Click **Add secret**.
+
+**C. Upload the new files** (on github.com, no terminal needed)
+1. Open your repository → **Add file** → **Upload files**.
+2. Drag these in from the unzipped `portal-starter` folder, keeping the folders:
+   `.github/workflows/daily-scan.yml`, `scripts/report_readers.py`, `scripts/push_reports.py`, `scripts/fetch_daily.py`, `scripts/export_dependency_track.py`,
+   the whole `policy/` folder, `frontend/src/labels.ts`, `backend/tests/test_readers.py`, `sample-scans/new-tools/`, `README.md`.
+   (Tip: the `.github` folder is hidden on Mac/Windows. If you can't drag it, open `.github/workflows/daily-scan.yml`
+   on github.com, click the pencil, select all, and paste the new contents.)
+3. Click **Commit changes**.
+
+**D. Run it once**
+1. **Actions** tab → **daily-scan** → **Run workflow** → **Run workflow**.
+2. Each project shows five jobs: SAST, SCA, DAST, IaC and report. The first run takes 30–60 minutes,
+   mostly CodeQL, Dependency-Check (first NVD download) and Dependency-Track (downloading the OSV database).
+   Later runs are faster because the NVD database is cached.
+3. Click a **report** job → **Security Gate** to see the totals. The portal gets the results by itself if
+   real-time push (section 8) is set up; otherwise run `fetch_daily.py` as above.
+
+**E. Update your own portal on your PC.** Copy the new `scripts/report_readers.py`, `scripts/push_reports.py`, `scripts/fetch_daily.py` and `frontend/src/labels.ts`
+into your portal folder, then rebuild the dashboard. In a terminal opened in the `frontend` folder, run `npm run build`.
+
+### What was tested
+- Real reports from Bandit, Bearer, KICS, Nuclei, Nikto, Conftest and Hadolint (on Juice Shop and Online Boutique) read
+  correctly. The old sample reports read exactly as before. 41 backend tests pass.
+- All the reports pushed into a test portal (16 tools, 704 findings), with no duplicates when sent again.
+- The Dependency-Track script, against a real Dependency-Track 4.14 server: sign in, settings, SBOM upload and reading results.
+- The workflow passes `actionlint`.
+
+**Not tested yet:** the workflow on GitHub itself. OSV-Scanner, Grype, Dependency-Check, Dependency-Track,
+CodeQL, Kubescape, Wapiti and Dastardly were checked only against example reports in each tool's documented format,
+because their vulnerability databases could not be reached from the test machine. The first run on GitHub will show whether they work.
+
