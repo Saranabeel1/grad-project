@@ -42,7 +42,7 @@ def read_artifact(data):
         for name in z.namelist():
             if name.endswith("target.json"):
                 target = json.loads(z.read(name))
-            elif name.lower().endswith(".json"):
+            elif name.lower().endswith((".json", ".xml")):
                 for tool, items in read_report(name, z.read(name)).items():
                     found.setdefault(tool, []).extend(items)
     for tool, items in found.items():  # the same finding from two reports counts once

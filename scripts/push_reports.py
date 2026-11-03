@@ -25,7 +25,7 @@ def read_folder(folder: Path):
     """(details of the scanned version, {tool: findings}) from a folder of reports."""
     target = json.loads((folder / "target.json").read_text(encoding="utf-8"))
     found = {}
-    for path in sorted(folder.glob("*.json")):
+    for path in sorted([*folder.glob("*.json"), *folder.glob("*.xml")]):
         if path.name == "target.json":
             continue
         for tool, items in read_report(path.name, path.read_bytes()).items():
