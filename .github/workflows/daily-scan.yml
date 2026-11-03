@@ -253,7 +253,7 @@ jobs:
         with:
           path: dc-data
           key: ${{ steps.day.outputs.key }}
-          restore-keys: dependency-check-
+          restore-keys: dependency-check-20   # only daily copies (dependency-check-2026-...), not older test copies
 
       # The first time this downloads every year's file (a few hundred MB); after that only the changed ones.
       - name: Download new NVD entries
@@ -261,7 +261,9 @@ jobs:
         if: steps.saved.outputs.cache-hit != 'true'
         timeout-minutes: 60
         run: |
-          mkdir -p dc-data && chmod 777 dc-data
+          # The saved copy comes back owned by GitHub's user; the Dependency-Check container runs as another
+          # user, so make every file writable (otherwise: "The database is read only").
+          mkdir -p dc-data && chmod -R a+rwX dc-data
           docker run --rm -v "$PWD/dc-data:/usr/share/dependency-check/data" owasp/dependency-check:latest \
             --updateonly --nvdDatafeed "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{0}.json.gz"
 
@@ -288,7 +290,7 @@ jobs:
     name: SCA ${{ matrix.alias }}
     needs: [check, nvd]
     # Runs even if the NVD download failed; then only Dependency-Check is skipped.
-    if: always() && needs.check.result == 'success' && needs.check.outputs.todo != '[]'
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.check.outputs.todo != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -361,14 +363,14 @@ jobs:
         with:
           path: dc-data
           key: ${{ needs.nvd.outputs.key }}
-          restore-keys: dependency-check-
+          restore-keys: dependency-check-20   # only daily copies (dependency-check-2026-...), not older test copies
 
       - name: OWASP Dependency-Check
         if: steps.nvd.outputs.cache-matched-key != ''
         continue-on-error: true
         timeout-minutes: 30
         run: |
-          chmod -R 777 dc-data reports
+          chmod -R a+rwX dc-data reports
           docker run --rm -v "$PWD/target:/src:ro" -v "$PWD/reports:/report" \
             -v "$PWD/dc-data:/usr/share/dependency-check/data" owasp/dependency-check:latest \
             --scan /src --format JSON --out /report --project "${{ matrix.alias }}" --noupdate \
@@ -639,7 +641,7 @@ jobs:
   report:
     name: report ${{ matrix.alias }}
     needs: [check, sast, sca, dast, iac, nvd]
-    if: always() && needs.check.outputs.todo != '[]' && needs.check.result == 'success'
+    if: ${{ !cancelled() && needs.check.outputs.todo != '[]' && needs.check.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
