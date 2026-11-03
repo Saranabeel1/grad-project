@@ -242,7 +242,7 @@ reports, runs the Security Gate and sends everything to the portal. One tool fai
 |---|---|---|
 | SAST (code) | Semgrep, SonarQube, CodeQL, Bearer, Bandit | Bandit only finds Python. CodeQL's results are saved to a file, not uploaded to GitHub's Security tab. |
 | SCA (libraries) | Trivy, OSV-Scanner, Grype, OWASP Dependency-Check, OWASP Dependency-Track | Dependency-Check needs the `NVD_API_KEY` secret (steps below). Dependency-Track runs as a temporary server, like SonarQube. |
-| DAST (running website) | ZAP, Nuclei, Wapiti, Nikto, Dastardly | Only for projects with a website (G and H). Dastardly is Burp Suite's free scanner for pipelines; each scan stops after 10 minutes. |
+| DAST (running website) | ZAP, Nuclei, Wapiti, Nikto, Dastardly | All three projects. G and H start from one Docker image. I (Online Boutique, 11 services) is installed on a temporary Kubernetes cluster (kind) inside the job, with the shop on localhost:8090. Dastardly is Burp Suite's free scanner for pipelines; each scan stops after 10 minutes. |
 | IaC (config files) | Checkov, KICS, Kubescape, Conftest, Hadolint | Hadolint checks Dockerfiles. Trivy's misconfiguration checks also appear under IaC. Conftest uses our own rules in `policy/` (5 for Dockerfiles, 5 for Kubernetes). Kubescape only finds problems in projects with Kubernetes files. |
 
 Leaked passwords and keys are still skipped by every tool (KICS runs with `--disable-secrets`; Bearer's `gitleaks` rule is dropped).
@@ -273,9 +273,10 @@ rather than a web-application scanner, so ZAP, Nuclei, Wapiti, Nikto and Dastard
 
 **D. Run it once**
 1. **Actions** tab → **daily-scan** → **Run workflow** → **Run workflow**.
-2. Each project shows five jobs: SAST, SCA, DAST, IaC and report. The first run takes 30–60 minutes,
-   mostly CodeQL, Dependency-Check (first NVD download) and Dependency-Track (downloading the OSV database).
-   Later runs are faster because the NVD database is cached.
+2. Each project shows five jobs: SAST, SCA, DAST, IaC and report, plus one **Update NVD database** job.
+   That job downloads the NVD database for Dependency-Check once a day and keeps it in GitHub's cache.
+   The very first time it can take 1–2 hours (the whole database; NVD limits download speed), and the SCA jobs
+   wait for it. After that it only fetches the day's changes, a few minutes, so a normal run takes 30–60 minutes.
 3. Click a **report** job → **Security Gate** to see the totals. The portal gets the results by itself if
    real-time push (section 8) is set up; otherwise run `fetch_daily.py` as above.
 
@@ -289,7 +290,7 @@ into your portal folder, then rebuild the dashboard. In a terminal opened in the
 - The Dependency-Track script, against a real Dependency-Track 4.14 server: sign in, settings, SBOM upload and reading results.
 - The workflow passes `actionlint`.
 
-**Not tested yet:** the workflow on GitHub itself. OSV-Scanner, Grype, Dependency-Check, Dependency-Track,
+**Not tested yet:** the workflow on GitHub itself, including starting Online Boutique on Kubernetes for DAST. OSV-Scanner, Grype, Dependency-Check, Dependency-Track,
 CodeQL, Kubescape, Wapiti and Dastardly were checked only against example reports in each tool's documented format,
 because their vulnerability databases could not be reached from the test machine. The first run on GitHub will show whether they work.
 
