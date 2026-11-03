@@ -241,7 +241,7 @@ reports, runs the Security Gate and sends everything to the portal. One tool fai
 | Category | Tools | Notes |
 |---|---|---|
 | SAST (code) | Semgrep, SonarQube, CodeQL, Bearer, Bandit | Bandit only finds Python. CodeQL's results are saved to a file, not uploaded to GitHub's Security tab. |
-| SCA (libraries) | Trivy, OSV-Scanner, Grype, OWASP Dependency-Check, OWASP Dependency-Track | Dependency-Check needs the `NVD_API_KEY` secret (steps below). Dependency-Track runs as a temporary server, like SonarQube. |
+| SCA (libraries) | Trivy, OSV-Scanner, Grype, OWASP Dependency-Check, OWASP Dependency-Track | Dependency-Check reads NIST's NVD database, built once a day from NVD's yearly data files (no key needed). Dependency-Track runs as a temporary server, like SonarQube. |
 | DAST (running website) | ZAP, Nuclei, Wapiti, Nikto, Dastardly | All three projects. G and H start from one Docker image. I (Online Boutique, 11 services) is installed on a temporary Kubernetes cluster (kind) inside the job, with the shop on localhost:8090. Dastardly is Burp Suite's free scanner for pipelines; each scan stops after 10 minutes. |
 | IaC (config files) | Checkov, KICS, Kubescape, Conftest, Hadolint | Hadolint checks Dockerfiles. Trivy's misconfiguration checks also appear under IaC. Conftest uses our own rules in `policy/` (5 for Dockerfiles, 5 for Kubernetes). Kubescape only finds problems in projects with Kubernetes files. |
 
@@ -253,16 +253,9 @@ rather than a web-application scanner, so ZAP, Nuclei, Wapiti, Nikto and Dastard
 
 ### Turn it on (step by step)
 
-**A. Get a free NVD key** (for OWASP Dependency-Check; everything else works without it)
-1. Open https://nvd.nist.gov/developers/request-an-api-key
-2. Fill in your organisation name and email, choose the organisation type, accept the terms, click **Submit**.
-3. Open the email from NVD and click the link. The page shows your key (letters and numbers with dashes). Copy it.
+**A. (No key needed.)** An earlier version asked for an `NVD_API_KEY` secret. It is no longer used and can stay or be deleted.
 
-**B. Add the key to GitHub**
-1. Open your repository on github.com → **Settings** → **Secrets and variables** → **Actions**.
-2. Click **New repository secret**. Name: `NVD_API_KEY`. Secret: paste the key. Click **Add secret**.
-
-**C. Upload the new files** (on github.com, no terminal needed)
+**B. Upload the new files** (on github.com, no terminal needed)
 1. Open your repository → **Add file** → **Upload files**.
 2. Drag these in from the unzipped `portal-starter` folder, keeping the folders:
    `.github/workflows/daily-scan.yml`, `scripts/report_readers.py`, `scripts/push_reports.py`, `scripts/fetch_daily.py`, `scripts/export_dependency_track.py`,
@@ -271,12 +264,12 @@ rather than a web-application scanner, so ZAP, Nuclei, Wapiti, Nikto and Dastard
    on github.com, click the pencil, select all, and paste the new contents.)
 3. Click **Commit changes**.
 
-**D. Run it once**
+**C. Run it once**
 1. **Actions** tab → **daily-scan** → **Run workflow** → **Run workflow**.
 2. Each project shows five jobs: SAST, SCA, DAST, IaC and report, plus one **Update NVD database** job.
-   That job downloads the NVD database for Dependency-Check once a day and keeps it in GitHub's cache.
-   The very first time it can take 1–2 hours (the whole database; NVD limits download speed), and the SCA jobs
-   wait for it. After that it only fetches the day's changes, a few minutes, so a normal run takes 30–60 minutes.
+   That job builds the NVD database for Dependency-Check once a day from NVD's yearly data files and keeps it in
+   GitHub's cache; the SCA jobs wait for it. The first time it downloads every year's file; after that only
+   the changed ones. A normal run takes 30–60 minutes.
 3. Click a **report** job → **Security Gate** to see the totals. The portal gets the results by itself if
    real-time push (section 8) is set up; otherwise run `fetch_daily.py` as above.
 
