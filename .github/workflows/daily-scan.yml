@@ -15,7 +15,7 @@ name: daily-scan
 #
 # Results are sent straight to the portal when the PORTAL_URL and PORTAL_API_KEY secrets are set
 # (real-time push), and are always saved as files ("artifacts") that scripts/fetch_daily.py can bring in later.
-# OWASP Dependency-Check also needs the NVD_API_KEY secret (free, see README section 12); without it, it is skipped.
+# OWASP Dependency-Check reads NIST's NVD database, prepared once a day by the "Update NVD database" job.
 
 on:
   schedule:
@@ -228,9 +228,10 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------- NVD database for Dependency-Check
-  # Dependency-Check needs NIST's vulnerability database (NVD). Downloading it is slow and NVD limits how fast
-  # one key may download, so it is done once here (not by three jobs at the same time), at most once a day,
-  # and kept in GitHub's cache. The SCA jobs then only read it. Needs the NVD_API_KEY secret.
+  # Dependency-Check needs NIST's vulnerability database (NVD). It is built once here (not by three jobs at the
+  # same time), at most once a day, and kept in GitHub's cache; the SCA jobs then only read it.
+  # It is built from NVD's yearly data files (one download per year, nvdcve-2.0-<year>.json.gz) instead of
+  # the NVD API, which pages through 300,000+ entries slowly and with a speed limit. No key is needed for this.
   nvd:
     name: Update NVD database
     needs: check
@@ -239,8 +240,6 @@ jobs:
     timeout-minutes: 150
     permissions:
       actions: write          # to delete yesterday's copy of the database from the cache
-    env:
-      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     outputs:
       key: ${{ steps.day.outputs.key }}
     steps:
@@ -250,22 +249,21 @@ jobs:
 
       - name: Get the saved database
         id: saved
-        if: env.NVD_API_KEY != ''
         uses: actions/cache/restore@v4
         with:
           path: dc-data
           key: ${{ steps.day.outputs.key }}
           restore-keys: dependency-check-
 
-      # The first time this takes 30-90 minutes (the whole database); after that only the changes, a few minutes.
+      # The first time this downloads every year's file (a few hundred MB); after that only the changed ones.
       - name: Download new NVD entries
         id: update
-        if: env.NVD_API_KEY != '' && steps.saved.outputs.cache-hit != 'true'
-        timeout-minutes: 140
+        if: steps.saved.outputs.cache-hit != 'true'
+        timeout-minutes: 60
         run: |
           mkdir -p dc-data && chmod 777 dc-data
-          docker run --rm -e NVD_API_KEY -v "$PWD/dc-data:/usr/share/dependency-check/data" \
-            owasp/dependency-check:latest --updateonly --nvdApiKey "$NVD_API_KEY"
+          docker run --rm -v "$PWD/dc-data:/usr/share/dependency-check/data" owasp/dependency-check:latest \
+            --updateonly --nvdDatafeed "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{0}.json.gz"
 
       - name: Save today's database
         if: steps.update.outcome == 'success'
@@ -285,10 +283,6 @@ jobs:
             | grep -vx "${{ steps.day.outputs.key }}" \
             | xargs -r -n1 gh cache delete --repo "$GITHUB_REPOSITORY" || true
 
-      - name: Dependency-Check skipped
-        if: env.NVD_API_KEY == ''
-        run: echo "::notice::OWASP Dependency-Check skipped - add the NVD_API_KEY secret to turn it on (README section 12)."
-
   # ---------------------------------------------------------------- SCA: checks the libraries the project uses
   sca:
     name: SCA ${{ matrix.alias }}
@@ -303,8 +297,6 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.check.outputs.todo) }}
-    env:
-      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
       - name: Get the project's code (the commit the check found)
         uses: actions/checkout@v4
@@ -364,7 +356,7 @@ jobs:
       # Dependency-Check reads the NVD database prepared by the "Update NVD database" job (--noupdate).
       - name: Dependency-Check (get the NVD database)
         id: nvd
-        if: env.NVD_API_KEY != '' && needs.nvd.result == 'success'
+        if: needs.nvd.result == 'success'
         uses: actions/cache/restore@v4
         with:
           path: dc-data
