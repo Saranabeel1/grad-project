@@ -62,6 +62,16 @@ def all_pages(path, key, **params):
         page += 1
 
 
+def get_hotspots(project):
+    """SonarQube 26.10 renamed this parameter from "projectKey" to "project"; try the new name, then the old one."""
+    try:
+        return all_pages("/api/hotspots/search", "hotspots", project=project, status="TO_REVIEW")[0]
+    except urllib.error.HTTPError as e:
+        if e.code != 400:
+            raise
+    return all_pages("/api/hotspots/search", "hotspots", projectKey=project, status="TO_REVIEW")[0]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", required=True, help="the SonarQube project key used in the scan")
@@ -73,7 +83,7 @@ def main():
         wait_for_processing(args.project, args.wait_minutes)
         issues, rules = all_pages("/api/issues/search", "issues", componentKeys=args.project,
                                   impactSoftwareQualities="SECURITY", resolved="false", additionalFields="rules")
-        hotspots, _ = all_pages("/api/hotspots/search", "hotspots", projectKey=args.project, status="TO_REVIEW")
+        hotspots = get_hotspots(args.project)
     except urllib.error.HTTPError as e:
         sys.exit(f"SonarQube said HTTP {e.code} ({e.read().decode()[:200]}). "
                  "Check SONAR_TOKEN is a user token and the project key is right.")

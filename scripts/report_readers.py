@@ -67,7 +67,9 @@ def read_sarif(doc):
         tool = tool_of(run.get("tool", {}).get("driver", {}).get("name"))
         if not tool:
             continue  # a tool we do not read
-        rules = {r.get("id"): r for r in run.get("tool", {}).get("driver", {}).get("rules", [])}
+        # Rules live in the tool itself or, for CodeQL, in its query packs ("extensions").
+        parts = [run.get("tool", {}).get("driver", {})] + (run.get("tool", {}).get("extensions") or [])
+        rules = {r.get("id"): r for part in parts for r in part.get("rules") or []}
         for res in run.get("results", []):
             rid = res.get("ruleId", "unknown")
             rule = rules.get(rid, {})
@@ -334,12 +336,27 @@ def read_conftest_json(doc):
     return {"conftest": out}
 
 
+def _keep_xml_char(m):
+    ref = m.group(1)
+    n = int(ref[1:], 16) if ref[:1] in (b"x", b"X") else int(ref)
+    return m.group(0) if n in (9, 10, 13) or 0x20 <= n <= 0xD7FF or 0xE000 <= n <= 0x10FFFF else b""
+
+
 def read_dastardly_xml(data):
     """Dastardly (Burp Suite's free CI scanner) writes a JUnit XML report: one <failure> per issue."""
-    if b"<!DOCTYPE" in data or b"<!ENTITY" in data:
-        return {}  # never expand XML entities from a file
+    head = data[:data.find(b"<testsuite")]
+    if b"<!DOCTYPE" in head or b"<!ENTITY" in head:
+        return {}  # never expand XML entities from a file (issue texts further down may mention <!DOCTYPE)
+    # Issue texts quote raw web responses, which can hold characters XML does not allow (like &#0;).
+    data = re.sub(rb"&#(x[0-9a-fA-F]+|[0-9]+);", _keep_xml_char, data)
+    data = re.sub(rb"[\x00-\x08\x0b\x0c\x0e-\x1f]", b"", data)
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as e:
+        print(f"Dastardly report could not be read: {e}")
+        return {}
     out = []
-    for case in ET.fromstring(data).iter("testcase"):
+    for case in root.iter("testcase"):
         fail = case.find("failure")
         if fail is None:
             continue  # a check that passed
