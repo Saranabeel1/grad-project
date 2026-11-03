@@ -263,7 +263,7 @@ jobs:
         run: |
           # The saved copy comes back owned by GitHub's user; the Dependency-Check container runs as another
           # user, so make every file writable (otherwise: "The database is read only").
-          mkdir -p dc-data && chmod -R a+rwX dc-data
+          mkdir -p dc-data && sudo chmod -R a+rwX dc-data
           docker run --rm -v "$PWD/dc-data:/usr/share/dependency-check/data" owasp/dependency-check:latest \
             --updateonly --nvdDatafeed "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{0}.json.gz"
 
@@ -370,7 +370,8 @@ jobs:
         continue-on-error: true
         timeout-minutes: 30
         run: |
-          chmod -R a+rwX dc-data reports
+          # sudo: some reports were written by other tools' containers (as root).
+          sudo chmod -R a+rwX dc-data reports
           docker run --rm -v "$PWD/target:/src:ro" -v "$PWD/reports:/report" \
             -v "$PWD/dc-data:/usr/share/dependency-check/data" owasp/dependency-check:latest \
             --scan /src --format JSON --out /report --project "${{ matrix.alias }}" --noupdate \
@@ -486,7 +487,8 @@ jobs:
         run: |
           docker run --rm --network host -v "$PWD/reports:/out" projectdiscovery/nuclei:latest \
             -u "${{ matrix.url }}" -es info -etags dos,fuzz,intrusive -rl 100 -c 25 -timeout 5 \
-            -stats -si 60 -disable-update-check -je /out/nuclei.json
+            -stats -si 60 -je /out/nuclei.json || true
+          # (Nuclei downloads its checks, "templates", when it starts; so no -disable-update-check here.)
           # Nuclei writes no file when it finds nothing; an empty list shows the scan did run.
           [ -f reports/nuclei.json ] || echo '[]' > reports/nuclei.json
 
