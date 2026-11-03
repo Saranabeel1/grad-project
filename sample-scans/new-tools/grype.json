@@ -1,0 +1,4 @@
+{"matches":[{"vulnerability":{"id":"GHSA-562c-5r94-xh97","dataSource":"https://github.com/advisories/GHSA-562c-5r94-xh97","severity":"High","description":"Flask session cookie disclosure","fix":{"versions":["2.2.5"],"state":"fixed"},"cvss":[]},
+ "relatedVulnerabilities":[{"id":"CVE-2023-30861","severity":"High"}],
+ "artifact":{"name":"flask","version":"0.12","type":"python","locations":[{"path":"/requirements.txt"}],"purl":"pkg:pypi/flask@0.12"}}],
+ "source":{"type":"directory","target":"/src"},"distro":{},"descriptor":{"name":"grype","version":"0.104.0"}}

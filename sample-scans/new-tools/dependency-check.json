@@ -1,0 +1,4 @@
+{"reportSchema":"1.1","scanInfo":{"engineVersion":"12.1.0"},"projectInfo":{"name":"Project G"},
+ "dependencies":[{"fileName":"lodash:4.17.15","filePath":"/src/target/package-lock.json?lodash","packages":[{"id":"pkg:npm/lodash@4.17.15"}],
+  "vulnerabilities":[{"source":"NVD","name":"CVE-2020-8203","severity":"HIGH","cvssv3":{"baseScore":7.4},"cwes":["CWE-770"],"description":"Prototype pollution in zipObjectDeep."}]},
+  {"fileName":"clean-lib.jar","filePath":"/src/target/lib/clean-lib.jar"}]}

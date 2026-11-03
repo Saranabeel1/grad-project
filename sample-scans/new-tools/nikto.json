@@ -1,0 +1,117 @@
+[
+ {
+  "end_time": "2026-11-03 10:34:48 +0000",
+  "host": "localhost",
+  "ip": "127.0.0.1",
+  "port": 3000,
+  "server_banner": null,
+  "start_time": "2026-11-03 10:32:23 +0000",
+  "vulnerabilities": [
+   {
+    "id": "000287",
+    "method": "GET",
+    "msg": "Retrieved access-control-allow-origin header: \\*.",
+    "references": "",
+    "url": "/"
+   },
+   {
+    "id": "999100",
+    "method": "GET",
+    "msg": "Uncommon header(s) 'x-recruiting' found, with contents: /#/jobs.",
+    "references": "",
+    "url": "/"
+   },
+   {
+    "id": "999997",
+    "method": "GET",
+    "msg": "/robots.txt: Entry '/ftp/' is returned a non-forbidden or redirect HTTP code (200).",
+    "references": "https://portswigger.net/kb/issues/00600600_robots-txt-file",
+    "url": "/ftp/"
+   },
+   {
+    "id": "999996",
+    "method": "GET",
+    "msg": "contains 1 entry which should be manually viewed.",
+    "references": "https://developer.mozilla.org/en-US/docs/Glossary/Robots.txt",
+    "url": "/robots.txt"
+   },
+   {
+    "id": "013587",
+    "method": "GET",
+    "msg": "Suggested security header missing: strict-transport-security.",
+    "references": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security",
+    "url": "/"
+   },
+   {
+    "id": "013587",
+    "method": "GET",
+    "msg": "Suggested security header missing: referrer-policy.",
+    "references": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+    "url": "/"
+   },
+   {
+    "id": "013587",
+    "method": "GET",
+    "msg": "Suggested security header missing: permissions-policy.",
+    "references": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+    "url": "/"
+   },
+   {
+    "id": "013587",
+    "method": "GET",
+    "msg": "Suggested security header missing: content-security-policy.",
+    "references": "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+    "url": "/"
+   },
+   {
+    "id": "001535",
+    "method": "GET",
+    "msg": "This might be interesting.",
+    "references": "",
+    "url": "/.psql_history"
+   },
+   {
+    "id": "001675",
+    "method": "GET",
+    "msg": "This might be interesting.",
+    "references": "",
+    "url": "/ftp/"
+   },
+   {
+    "id": "001811",
+    "method": "GET",
+    "msg": "This might be interesting.",
+    "references": "",
+    "url": "/public/"
+   },
+   {
+    "id": "002739",
+    "method": "GET",
+    "msg": "Contains authorization information.",
+    "references": "",
+    "url": "/.htpasswd"
+   },
+   {
+    "id": "002743",
+    "method": "GET",
+    "msg": "A user's home directory may be set to the web root, the shell history was retrieved. This should not be accessible via the web.",
+    "references": "",
+    "url": "/.bash_history"
+   },
+   {
+    "id": "002748",
+    "method": "GET",
+    "msg": "Database SQL?.",
+    "references": "",
+    "url": "/.mysql_history"
+   },
+   {
+    "id": "002756",
+    "method": "GET",
+    "msg": "A user's home directory may be set to the web root, the shell history was retrieved. This should not be accessible via the web.",
+    "references": "",
+    "url": "/.sh_history"
+   }
+  ]
+ }
+]

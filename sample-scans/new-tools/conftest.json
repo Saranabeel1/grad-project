@@ -1,0 +1,85 @@
+[
+ {
+  "filename": "./kustomize/components/google-cloud-operations/otel-collector.yaml",
+  "namespace": "kubernetes",
+  "successes": 18,
+  "failures": [
+   {
+    "msg": "Deployment/opentelemetrycollector: container \"otel-gateway\" has no memory limit",
+    "metadata": {
+     "cwe": "400",
+     "id": "K8S004",
+     "query": "data.kubernetes.deny",
+     "severity": "low",
+     "title": "No memory limit"
+    }
+   },
+   {
+    "msg": "Deployment/opentelemetrycollector: container \"otel-gateway-init\" has no memory limit",
+    "metadata": {
+     "cwe": "400",
+     "id": "K8S004",
+     "query": "data.kubernetes.deny",
+     "severity": "low",
+     "title": "No memory limit"
+    }
+   }
+  ]
+ },
+ {
+  "filename": "./kubernetes-manifests/loadgenerator.yaml",
+  "namespace": "kubernetes",
+  "successes": 9,
+  "failures": [
+   {
+    "msg": "Deployment/loadgenerator: container \"frontend-check\" has no memory limit",
+    "metadata": {
+     "cwe": "400",
+     "id": "K8S004",
+     "query": "data.kubernetes.deny",
+     "severity": "low",
+     "title": "No memory limit"
+    }
+   }
+  ]
+ },
+ {
+  "filename": "./kustomize/base/loadgenerator.yaml",
+  "namespace": "kubernetes",
+  "successes": 9,
+  "failures": [
+   {
+    "msg": "Deployment/loadgenerator: container \"frontend-check\" has no memory limit",
+    "metadata": {
+     "cwe": "400",
+     "id": "K8S004",
+     "query": "data.kubernetes.deny",
+     "severity": "low",
+     "title": "No memory limit"
+    }
+   }
+  ]
+ },
+ {
+  "filename": "./release/kubernetes-manifests.yaml",
+  "namespace": "kubernetes",
+  "successes": 179,
+  "failures": [
+   {
+    "msg": "Deployment/loadgenerator: container \"frontend-check\" has no memory limit",
+    "metadata": {
+     "cwe": "400",
+     "id": "K8S004",
+     "query": "data.kubernetes.deny",
+     "severity": "low",
+     "title": "No memory limit"
+    }
+   }
+  ]
+ },
+ {
+  "filename": "./kustomize/components/network-policies/network-policy-loadgenerator.yaml",
+  "namespace": "kubernetes",
+  "successes": 5
+ }
+]

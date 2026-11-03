@@ -1,0 +1,4 @@
+{"classifications":{"Cross Site Scripting":{"desc":"...","sol":"...","ref":{"CWE-79: Improper Neutralization of Input During Web Page Generation":"https://cwe.mitre.org/data/definitions/79.html"},"wstg":["WSTG-INPV-01"]}},
+ "vulnerabilities":{"Cross Site Scripting":[{"method":"GET","path":"/search","info":"XSS vulnerability found via injection in the parameter q","level":2,"parameter":"q","module":"xss","wstg":["WSTG-INPV-01"]}],"SQL Injection":[]},
+ "anomalies":{"Internal Server Error":[{"method":"POST","path":"/login","info":"The server responded with a 500 HTTP error code","level":3,"parameter":"email","module":"sql"}]},
+ "additionals":{},"infos":{"target":"http://localhost:3000/"}}

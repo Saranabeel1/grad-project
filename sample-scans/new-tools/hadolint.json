@@ -1,0 +1,66 @@
+[
+ {
+  "code": "DL3066",
+  "column": 1,
+  "file": "target/infrastructure/Dockerfile",
+  "level": "info",
+  "line": 21,
+  "message": "Non-numeric user-id may not be resolvable by host system"
+ },
+ {
+  "code": "DL3006",
+  "column": 1,
+  "file": "target/test/smoke/Dockerfile",
+  "level": "warning",
+  "line": 1,
+  "message": "Always tag the version of an image explicitly"
+ },
+ {
+  "code": "DL3018",
+  "column": 1,
+  "file": "target/test/smoke/Dockerfile",
+  "level": "warning",
+  "line": 3,
+  "message": "Pin versions in apk add. Instead of `apk add <package>` use `apk add <package>=<version>`"
+ },
+ {
+  "code": "DL3019",
+  "column": 1,
+  "file": "target/test/smoke/Dockerfile",
+  "level": "info",
+  "line": 3,
+  "message": "Use the `--no-cache` switch to avoid the need to use `--update` and remove `/var/cache/apk/*` when done installing packages"
+ },
+ {
+  "code": "DL3045",
+  "column": 1,
+  "file": "target/test/smoke/Dockerfile",
+  "level": "warning",
+  "line": 5,
+  "message": "`COPY` to a relative destination without `WORKDIR` set."
+ },
+ {
+  "code": "DL3059",
+  "column": 1,
+  "file": "target/Dockerfile",
+  "level": "info",
+  "line": 5,
+  "message": "Multiple consecutive `RUN` instructions. Consider consolidation."
+ },
+ {
+  "code": "DL3042",
+  "column": 1,
+  "file": "md/src/loadgenerator/Dockerfile",
+  "level": "warning",
+  "line": 31,
+  "message": "Avoid use of cache directory with pip. Use `pip install --no-cache-dir <package>`"
+ },
+ {
+  "code": "DL3025",
+  "column": 1,
+  "file": "md/src/loadgenerator/Dockerfile",
+  "level": "warning",
+  "line": 52,
+  "message": "Use arguments JSON notation for CMD and ENTRYPOINT arguments"
+ }
+]

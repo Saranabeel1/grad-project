@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<testsuites failures="2" name="Dastardly scan results" tests="3">
+  <testsuite failures="2" name="http://localhost:3000/" tests="3">
+    <testcase classname="Cross-site scripting (reflected)" name="Cross-site scripting (reflected) found at http://localhost:3000/rest/products/search">
+      <failure message="Cross-site scripting (reflected) found at http://localhost:3000/rest/products/search" type="High">
+Severity: High
+Confidence: Certain
+Host: http://localhost:3000
+Path: /rest/products/search?q=test
+
+Vulnerability classifications:
+CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')
+      </failure>
+    </testcase>
+    <testcase classname="Content security policy: not enforced" name="Content security policy: not enforced found at http://localhost:3000/">
+      <failure message="Content security policy: not enforced found at http://localhost:3000/" type="Low">
+Severity: Low
+Confidence: Certain
+Host: http://localhost:3000
+Path: /
+      </failure>
+    </testcase>
+    <testcase classname="SQL injection" name="No SQL injection found at http://localhost:3000/"/>
+  </testsuite>
+</testsuites>

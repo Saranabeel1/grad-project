@@ -1,0 +1,315 @@
+{
+ "critical": [
+  {
+   "cwe_ids": [
+    "798"
+   ],
+   "id": "javascript_express_hardcoded_secret",
+   "title": "Usage of hard-coded secret",
+   "description": "(trimmed)",
+   "documentation_url": "https://docs.bearer.com/reference/rules/javascript_express_hardcoded_secret",
+   "line_number": 54,
+   "full_filename": "lib/insecurity.ts",
+   "filename": "lib/insecurity.ts",
+   "category_groups": [
+    "PII",
+    "Personal Data"
+   ],
+   "source": {
+    "start": 54,
+    "end": 54,
+    "column": {
+     "start": 41,
+     "end": 108
+    }
+   },
+   "sink": {
+    "start": 54,
+    "end": 54,
+    "column": {
+     "start": 41,
+     "end": 108
+    },
+    "content": ""
+   },
+   "parent_line_number": 54,
+   "fingerprint": "c095a5cc1948bae67c38b5c5d85eb4f4_0",
+   "old_fingerprint": "f6280eae4bd9d5047c98a3cf61e3a321_0",
+   "code_extract": "(trimmed)"
+  },
+  {
+   "cwe_ids": [
+    "95"
+   ],
+   "id": "javascript_lang_eval_user_input",
+   "title": "Unsanitized user input in 'eval' type function",
+   "description": "(trimmed)",
+   "documentation_url": "https://docs.bearer.com/reference/rules/javascript_lang_eval_user_input",
+   "line_number": 22,
+   "full_filename": "routes/b2bOrder.ts",
+   "filename": "routes/b2bOrder.ts",
+   "category_groups": [
+    "PII",
+    "Personal Data"
+   ],
+   "source": {
+    "start": 22,
+    "end": 22,
+    "column": {
+     "start": 9,
+     "end": 34
+    }
+   },
+   "sink": {
+    "start": 22,
+    "end": 22,
+    "column": {
+     "start": 9,
+     "end": 34
+    },
+    "content": ""
+   },
+   "parent_line_number": 22,
+   "fingerprint": "07e54b106f46e8d2158d7cc39518dab0_0",
+   "old_fingerprint": "d0e2a35bdca6fd7f95dafb4ea8d14339_0",
+   "code_extract": "(trimmed)"
+  }
+ ],
+ "high": [
+  {
+   "cwe_ids": [
+    "79"
+   ],
+   "id": "javascript_express_cross_site_scripting",
+   "title": "Unsanitized user input in HTTP response (XSS)",
+   "description": "(trimmed)",
+   "documentation_url": "https://docs.bearer.com/reference/rules/javascript_express_cross_site_scripting",
+   "line_number": 101,
+   "full_filename": "routes/userProfile.ts",
+   "filename": "routes/userProfile.ts",
+   "category_groups": [
+    "PII",
+    "Personal Data"
+   ],
+   "source": {
+    "start": 101,
+    "end": 101,
+    "column": {
+     "start": 7,
+     "end": 25
+    }
+   },
+   "sink": {
+    "start": 101,
+    "end": 101,
+    "column": {
+     "start": 7,
+     "end": 25
+    },
+    "content": ""
+   },
+   "parent_line_number": 101,
+   "fingerprint": "972bae18730d10115e89451a622699c6_0",
+   "old_fingerprint": "c3a315a327c3edc070aa84e151d1fcf6_0",
+   "code_extract": "(trimmed)"
+  },
+  {
+   "cwe_ids": [
+    "73"
+   ],
+   "id": "javascript_express_external_file_upload",
+   "title": "Unsanitized user input in HTTP send file request",
+   "description": "(trimmed)",
+   "documentation_url": "https://docs.bearer.com/reference/rules/javascript_express_external_file_upload",
+   "line_number": 14,
+   "full_filename": "routes/keyServer.ts",
+   "filename": "routes/keyServer.ts",
+   "category_groups": [
+    "PII",
+    "Personal Data"
+   ],
+   "source": {
+    "start": 14,
+    "end": 14,
+    "column": {
+     "start": 7,
+     "end": 58
+    }
+   },
+   "sink": {
+    "start": 14,
+    "end": 14,
+    "column": {
+     "start": 7,
+     "end": 58
+    },
+    "content": ""
+   },
+   "parent_line_number": 14,
+   "fingerprint": "8643fdcb8411f54a6af5a25deb2da818_0",
+   "old_fingerprint": "e4bcd32de265c3d70b955456f66b8dc1_0",
+   "code_extract": "(trimmed)"
+  },
+  {
+   "cwe_ids": [
+    "798"
+   ],
+   "id": "gitleaks",
+   "title": "Leakage of hard-coded secret",
+   "filename": "config/x.yml",
+   "line_number": 3
+  }
+ ],
+ "low": [
+  {
+   "cwe_ids": [
+    "548"
+   ],
+   "id": "javascript_express_exposed_dir_listing",
+   "title": "Missing access restriction on directory listing",
+   "description": "(trimmed)",
+   "documentation_url": "https://docs.bearer.com/reference/rules/javascript_express_exposed_dir_listing",
+   "line_number": 2,
+   "full_filename": "data/static/codefixes/accessLogDisclosureChallenge_1_correct.ts",
+   "filename": "data/static/codefixes/accessLogDisclosureChallenge_1_correct.ts",
+   "category_groups": [
+    "PII",
+    "Personal Data"
+   ],
+   "source": {
+    "start": 2,
+    "end": 2,
+    "column": {
+     "start": 3,
+     "end": 76
+    }
+   },
+   "sink": {
+    "start": 2,
+    "end": 2,
+    "column": {
+     "start": 3,
+     "end": 76
+    },
+    "content": ""
+   },
+   "parent_line_number": 2,
+   "fingerprint": "f561fa26365b6c05e91ddc3b18fbed28_0",
+   "old_fingerprint": "339d4c2312603c61de67a43718b6769a_6",
+   "code_extract": "(trimmed)"
+  },
+  {
+   "cwe_ids": [
+    "548"
+   ],
+   "id": "javascript_express_exposed_dir_listing",
+   "title": "Missing access restriction on directory listing",
+   "description": "(trimmed)",
+   "documentation_url": "https://docs.bearer.com/reference/rules/javascript_express_exposed_dir_listing",
+   "line_number": 6,
+   "full_filename": "data/static/codefixes/accessLogDisclosureChallenge_1_correct.ts",
+   "filename": "data/static/codefixes/accessLogDisclosureChallenge_1_correct.ts",
+   "category_groups": [
+    "PII",
+    "Personal Data"
+   ],
+   "source": {
+    "start": 6,
+    "end": 6,
+    "column": {
+     "start": 3,
+     "end": 109
+    }
+   },
+   "sink": {
+    "start": 6,
+    "end": 6,
+    "column": {
+     "start": 3,
+     "end": 109
+    },
+    "content": ""
+   },
+   "parent_line_number": 6,
+   "fingerprint": "f561fa26365b6c05e91ddc3b18fbed28_1",
+   "old_fingerprint": "339d4c2312603c61de67a43718b6769a_13",
+   "code_extract": "(trimmed)"
+  }
+ ],
+ "medium": [
+  {
+   "cwe_ids": [
+    "693"
+   ],
+   "id": "javascript_express_jwt_not_revoked",
+   "title": "Missing revoke method on JWT",
+   "description": "(trimmed)",
+   "documentation_url": "https://docs.bearer.com/reference/rules/javascript_express_jwt_not_revoked",
+   "line_number": 52,
+   "full_filename": "lib/insecurity.ts",
+   "filename": "lib/insecurity.ts",
+   "category_groups": [
+    "PII",
+    "Personal Data"
+   ],
+   "source": {
+    "start": 52,
+    "end": 52,
+    "column": {
+     "start": 35,
+     "end": 77
+    }
+   },
+   "sink": {
+    "start": 52,
+    "end": 52,
+    "column": {
+     "start": 35,
+     "end": 77
+    },
+    "content": ""
+   },
+   "parent_line_number": 52,
+   "fingerprint": "d5aa377b45e8572a3f1634b5411f5973_0",
+   "old_fingerprint": "048e78abccf6848cff3fe854484b91d7_0",
+   "code_extract": "(trimmed)"
+  },
+  {
+   "cwe_ids": [
+    "693"
+   ],
+   "id": "javascript_express_jwt_not_revoked",
+   "title": "Missing revoke method on JWT",
+   "description": "(trimmed)",
+   "documentation_url": "https://docs.bearer.com/reference/rules/javascript_express_jwt_not_revoked",
+   "line_number": 53,
+   "full_filename": "lib/insecurity.ts",
+   "filename": "lib/insecurity.ts",
+   "category_groups": [
+    "PII",
+    "Personal Data"
+   ],
+   "source": {
+    "start": 53,
+    "end": 53,
+    "column": {
+     "start": 30,
+     "end": 79
+    }
+   },
+   "sink": {
+    "start": 53,
+    "end": 53,
+    "column": {
+     "start": 30,
+     "end": 79
+    },
+    "content": ""
+   },
+   "parent_line_number": 53,
+   "fingerprint": "d5aa377b45e8572a3f1634b5411f5973_1",
+   "old_fingerprint": "048e78abccf6848cff3fe854484b91d7_1",
+   "code_extract": "(trimmed)"
+  }
+ ]
+}

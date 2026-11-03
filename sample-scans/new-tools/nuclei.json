@@ -1,0 +1,52 @@
+[
+ {
+  "template-url": "https://cloud.projectdiscovery.io/public/swagger-api",
+  "template-id": "swagger-api",
+  "template-path": "/nt/http/exposures/apis/swagger-api.yaml",
+  "info": {
+   "name": "Public Swagger API - Detect",
+   "author": [
+    "pdteam",
+    "c-sh0",
+    "amirhossein raeisi",
+    "eduardo quintanilha"
+   ],
+   "tags": [
+    "exposure",
+    "api",
+    "swagger",
+    "discovery"
+   ],
+   "description": "Public Swagger API was detected.\n",
+   "reference": [
+    "https://swagger.io/"
+   ],
+   "severity": "info",
+   "metadata": {
+    "max-request": 59,
+    "shodan-query": "http.title:\"swagger\"",
+    "verified": true
+   },
+   "classification": {
+    "cve-id": null,
+    "cwe-id": [
+     "cwe-200"
+    ],
+    "cvss-metrics": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"
+   }
+  },
+  "type": "http",
+  "host": "localhost",
+  "port": "3000",
+  "scheme": "http",
+  "url": "http://localhost:3000",
+  "matched-at": "http://localhost:3000/api-docs/swagger.yaml",
+  "meta": {
+   "paths": "/api-docs/swagger.yaml"
+  },
+  "ip": "127.0.0.1",
+  "timestamp": "2026-11-03T10:33:26.924063239Z",
+  "curl-command": "curl -X 'GET' -d '' -H 'Accept: text/html, application/json' -H 'Accept-Language: en' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 'http://localhost:3000/api-docs/swagger.yaml'",
+  "matcher-status": true
+ }
+]

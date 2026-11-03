@@ -1,0 +1,6 @@
+{"results":[{"source":{"path":"/home/runner/work/portal/portal/target/requirements.txt","type":"lockfile"},
+ "packages":[{"package":{"name":"pyyaml","version":"5.1","ecosystem":"PyPI"},
+  "vulnerabilities":[{"id":"GHSA-8q59-q68h-6hv4","summary":"Improper Input Validation in PyYAML","aliases":["CVE-2020-1747","PYSEC-2020-96"],"database_specific":{"severity":"CRITICAL","cwe_ids":["CWE-20"]}},
+                     {"id":"PYSEC-2020-96","aliases":["CVE-2020-1747","GHSA-8q59-q68h-6hv4"]}],
+  "groups":[{"ids":["GHSA-8q59-q68h-6hv4","PYSEC-2020-96"],"aliases":["CVE-2020-1747","GHSA-8q59-q68h-6hv4","PYSEC-2020-96"],"max_severity":"9.8"}]}]}],
+ "experimental_config":{"licenses":{"summary":false,"allowlist":null}}}

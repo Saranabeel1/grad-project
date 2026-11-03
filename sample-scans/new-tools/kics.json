@@ -1,0 +1,200 @@
+{
+ "kics_version": "v2.2.0",
+ "files_scanned": 39,
+ "lines_scanned": 5893,
+ "files_parsed": 38,
+ "lines_parsed": 5868,
+ "lines_ignored": 12,
+ "files_failed_to_scan": 0,
+ "queries_total": 1744,
+ "queries_failed_to_execute": 0,
+ "queries_failed_to_compute_similarity_id": 0,
+ "scan_id": "console",
+ "severity_counters": {
+  "CRITICAL": 0,
+  "HIGH": 24,
+  "INFO": 50,
+  "LOW": 45,
+  "MEDIUM": 113,
+  "TRACE": 0
+ },
+ "total_counter": 232,
+ "total_bom_resources": 0,
+ "start": "2026-11-03T10:26:08.24952896Z",
+ "end": "2026-11-03T10:26:32.612268712Z",
+ "paths": [
+  "/path"
+ ],
+ "queries": [
+  {
+   "query_name": "Missing User Instruction",
+   "query_id": "fd54f200-402c-4333-a5a4-36ef6709af2f",
+   "query_url": "https://docs.docker.com/engine/reference/builder/#user",
+   "severity": "HIGH",
+   "platform": "Dockerfile",
+   "cwe": "250",
+   "risk_score": "7.7",
+   "cloud_provider": "COMMON",
+   "category": "Build Process",
+   "experimental": false,
+   "description": "Always set a user in the runtime stage of your Dockerfile. Without it, the container defaults to root, even if earlier build stages define a user.",
+   "description_id": "eb49caf6",
+   "files": [
+    {
+     "file_name": "../../path/test/smoke/Dockerfile",
+     "similarity_id": "ab5ef6056cfc15a457f5ac752c7506ce24640de95783183b01bdda75996dce42",
+     "line": 1,
+     "issue_type": "MissingAttribute",
+     "search_key": "FROM={{alpine}}",
+     "search_line": -1,
+     "search_value": "",
+     "expected_value": "The 'Dockerfile' should contain the 'USER' instruction",
+     "actual_value": "The 'Dockerfile' does not contain any 'USER' instruction"
+    }
+   ]
+  },
+  {
+   "query_name": "Sensitive Port Is Exposed To Entire Network",
+   "query_id": "381c3f2a-ef6f-4eff-99f7-b169cda3422c",
+   "query_url": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group",
+   "severity": "HIGH",
+   "platform": "Terraform",
+   "cwe": "200",
+   "risk_score": "7.7",
+   "cloud_provider": "AWS",
+   "category": "Networking and Firewall",
+   "experimental": false,
+   "description": "A sensitive port, such as port 23 or port 110, is open for the whole network in either TCP or UDP protocol",
+   "description_id": "5be78364",
+   "files": [
+    {
+     "file_name": "../../path/data/static/codefixes/iacLeakedKeyChallenge_3_correct.tf",
+     "similarity_id": "8c5c4b008984b4cb1348701eb386e7a8ca02c1c0d494306b892915435441cca8",
+     "line": 67,
+     "resource_type": "aws_security_group",
+     "resource_name": "${var.project_name}-alb-sg",
+     "issue_type": "IncorrectValue",
+     "search_key": "aws_security_group[alb].ingress[0]",
+     "search_line": 67,
+     "search_value": "TCP,80",
+     "expected_value": "HTTP (TCP:80) should not be allowed",
+     "actual_value": "HTTP (TCP:80) is allowed"
+    },
+    {
+     "file_name": "../../path/data/static/codefixes/iacLeakedKeyChallenge_1.tf",
+     "similarity_id": "4e7aea1050cf01e1f214ac666af906138aa01ca0bc8a5139828327c9b56b0f5c",
+     "line": 74,
+     "resource_type": "aws_security_group",
+     "resource_name": "${var.project_name}-alb-sg",
+     "issue_type": "IncorrectValue",
+     "search_key": "aws_security_group[alb].ingress[1]",
+     "search_line": 74,
+     "search_value": "TCP,443",
+     "expected_value": "HTTPS (TCP:443) should not be allowed",
+     "actual_value": "HTTPS (TCP:443) is allowed"
+    }
+   ]
+  },
+  {
+   "query_name": "Unrestricted Security Group Ingress",
+   "query_id": "4728cd65-a20c-49da-8b31-9c08b423e4db",
+   "query_url": "https://www.terraform.io/docs/providers/aws/r/security_group.html",
+   "severity": "HIGH",
+   "platform": "Terraform",
+   "cwe": "668",
+   "risk_score": "7.2",
+   "cloud_provider": "AWS",
+   "category": "Networking and Firewall",
+   "experimental": false,
+   "description": "Security groups allow ingress from 0.0.0.0:0 and/or ::/0",
+   "description_id": "ce3ee5e0",
+   "files": [
+    {
+     "file_name": "../../path/data/static/codefixes/iacLeakedKeyChallenge_3_correct.tf",
+     "similarity_id": "fcf9f02d5cd8d1bcd7da2379fe5e1d6851e3dbab50599832430bf5dfc8f32105",
+     "line": 78,
+     "resource_type": "aws_security_group",
+     "resource_name": "${var.project_name}-alb-sg",
+     "issue_type": "IncorrectValue",
+     "search_key": "aws_security_group[alb].ingress[1].cidr_blocks",
+     "search_line": 78,
+     "search_value": "",
+     "expected_value": "aws_security_group[alb].ingress[1].cidr_blocks should not contain '0.0.0.0/0'",
+     "actual_value": "aws_security_group[alb].ingress[1].cidr_blocks contains '0.0.0.0/0'"
+    },
+    {
+     "file_name": "../../path/data/static/codefixes/iacLeakedKeyChallenge_1.tf",
+     "similarity_id": "b1ed4934d9a5a25721207a655ee47d6d11f39021114787188a8f8d8c61d90b5c",
+     "line": 78,
+     "resource_type": "aws_security_group",
+     "resource_name": "${var.project_name}-alb-sg",
+     "issue_type": "IncorrectValue",
+     "search_key": "aws_security_group[alb].ingress[1].cidr_blocks",
+     "search_line": 78,
+     "search_value": "",
+     "expected_value": "aws_security_group[alb].ingress[1].cidr_blocks should not contain '0.0.0.0/0'",
+     "actual_value": "aws_security_group[alb].ingress[1].cidr_blocks contains '0.0.0.0/0'"
+    }
+   ]
+  },
+  {
+   "query_name": "ALB Deletion Protection Disabled",
+   "query_id": "afecd1f1-6378-4f7e-bb3b-60c35801fdd4",
+   "query_url": "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lb#enable_deletion_protection",
+   "severity": "MEDIUM",
+   "platform": "Terraform",
+   "cwe": "693",
+   "risk_score": "5.1",
+   "cloud_provider": "AWS",
+   "category": "Insecure Configurations",
+   "experimental": false,
+   "description": "Application Load Balancer should have deletion protection enabled",
+   "description_id": "224b3c6f",
+   "files": [
+    {
+     "file_name": "../../path/terraform/networking.tf",
+     "similarity_id": "ccf57f16332e9fc5ddcb7402160edd4412a0f4b46aba6c0cf8dcd44a27817ae3",
+     "line": 122,
+     "resource_type": "aws_lb",
+     "resource_name": "juice-shop-alb",
+     "issue_type": "MissingAttribute",
+     "search_key": "aws_lb[juice_shop]",
+     "search_line": 122,
+     "search_value": "",
+     "expected_value": "'enable_deletion_protection' should be defined and set to true",
+     "actual_value": "'enable_deletion_protection' is undefined or null",
+     "remediation": "enable_deletion_protection = true",
+     "remediation_type": "addition"
+    },
+    {
+     "file_name": "../../path/data/static/codefixes/iacLeakedKeyChallenge_2.tf",
+     "similarity_id": "083a9b40c9bf8e77d5749c22d61a365aef295d1c45ccdc23e3d4965694a5b88e",
+     "line": 121,
+     "resource_type": "aws_lb",
+     "resource_name": "${var.project_name}-alb",
+     "issue_type": "MissingAttribute",
+     "search_key": "aws_lb[juice_shop]",
+     "search_line": 121,
+     "search_value": "",
+     "expected_value": "'enable_deletion_protection' should be defined and set to true",
+     "actual_value": "'enable_deletion_protection' is undefined or null",
+     "remediation": "enable_deletion_protection = true",
+     "remediation_type": "addition"
+    }
+   ]
+  },
+  {
+   "query_name": "Passwords And Secrets - Generic Password",
+   "query_id": "487f4be7",
+   "severity": "HIGH",
+   "category": "Secret Management",
+   "files": [
+    {
+     "file_name": "../path/x.yml",
+     "line": 1,
+     "actual_value": "secret"
+    }
+   ]
+  }
+ ]
+}

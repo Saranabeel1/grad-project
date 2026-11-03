@@ -1,0 +1,4 @@
+{"dependency-track":true,"project":"project-g",
+ "findings":[{"component":{"name":"express","version":"4.17.1","purl":"pkg:npm/express@4.17.1"},
+  "vulnerability":{"vulnId":"CVE-2024-29041","source":"NVD","severity":"MEDIUM","title":"Open redirect in express","cweId":601},
+  "analysis":{"isSuppressed":false}}]}
