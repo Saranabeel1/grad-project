@@ -43,7 +43,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' }}
           # alias: the name shown in the portal. repo: the public project.
-          # image + url: a running copy of the website, for the DAST tools. Leave empty to skip DAST.
+          # image + url: a running copy of the website, for the DAST tools (one Docker image).
+          # k8s + url: for apps made of many services: the Kubernetes file (in the project) that starts them all.
+          # Leave image, k8s and url empty to skip DAST.
           # codeql: the languages CodeQL should look at (ones that need no build step).
           PROJECTS: |
             [
@@ -54,7 +56,7 @@ jobs:
                "image": "webgoat/webgoat:latest", "url": "http://localhost:8080/WebGoat",
                "codeql": "java-kotlin,javascript-typescript"},
               {"alias": "Project I", "repo": "GoogleCloudPlatform/microservices-demo",
-               "image": "", "url": "",
+               "image": "", "k8s": "release/kubernetes-manifests.yaml", "url": "http://localhost:8090",
                "codeql": "python,csharp,java-kotlin,javascript-typescript"}
             ]
         run: |
@@ -78,7 +80,7 @@ jobs:
             fi
           done < <(jq -c '.[]' <<< "$PROJECTS")
           echo "todo=$todo" >> "$GITHUB_OUTPUT"
-          echo "todo_web=$(jq -c '[.[] | select(.image != "")]' <<< "$todo")" >> "$GITHUB_OUTPUT"
+          echo "todo_web=$(jq -c '[.[] | select(.image != "" or (.k8s // "") != "")]' <<< "$todo")" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------- SAST: reads the source code
   sast:
@@ -225,11 +227,74 @@ jobs:
           path: reports/
           retention-days: 1
 
+  # ---------------------------------------------------------------- NVD database for Dependency-Check
+  # Dependency-Check needs NIST's vulnerability database (NVD). Downloading it is slow and NVD limits how fast
+  # one key may download, so it is done once here (not by three jobs at the same time), at most once a day,
+  # and kept in GitHub's cache. The SCA jobs then only read it. Needs the NVD_API_KEY secret.
+  nvd:
+    name: Update NVD database
+    needs: check
+    if: needs.check.outputs.todo != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      actions: write          # to delete yesterday's copy of the database from the cache
+    env:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+    outputs:
+      key: ${{ steps.day.outputs.key }}
+    steps:
+      - name: Today's database name
+        id: day
+        run: echo "key=dependency-check-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Get the saved database
+        id: saved
+        if: env.NVD_API_KEY != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: dc-data
+          key: ${{ steps.day.outputs.key }}
+          restore-keys: dependency-check-
+
+      # The first time this takes 30-90 minutes (the whole database); after that only the changes, a few minutes.
+      - name: Download new NVD entries
+        id: update
+        if: env.NVD_API_KEY != '' && steps.saved.outputs.cache-hit != 'true'
+        timeout-minutes: 140
+        run: |
+          mkdir -p dc-data && chmod 777 dc-data
+          docker run --rm -e NVD_API_KEY -v "$PWD/dc-data:/usr/share/dependency-check/data" \
+            owasp/dependency-check:latest --updateonly --nvdApiKey "$NVD_API_KEY"
+
+      - name: Save today's database
+        if: steps.update.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: dc-data
+          key: ${{ steps.day.outputs.key }}
+
+      # Keep only today's copy, so the big database does not push other cache entries out.
+      - name: Delete older copies
+        if: steps.update.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list --repo "$GITHUB_REPOSITORY" --key dependency-check- --json key --jq '.[].key' \
+            | grep -vx "${{ steps.day.outputs.key }}" \
+            | xargs -r -n1 gh cache delete --repo "$GITHUB_REPOSITORY" || true
+
+      - name: Dependency-Check skipped
+        if: env.NVD_API_KEY == ''
+        run: echo "::notice::OWASP Dependency-Check skipped - add the NVD_API_KEY secret to turn it on (README section 12)."
+
   # ---------------------------------------------------------------- SCA: checks the libraries the project uses
   sca:
     name: SCA ${{ matrix.alias }}
-    needs: check
-    if: needs.check.outputs.todo != '[]'
+    needs: [check, nvd]
+    # Runs even if the NVD download failed; then only Dependency-Check is skipped.
+    if: always() && needs.check.result == 'success' && needs.check.outputs.todo != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -296,39 +361,27 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" anchore/grype:latest \
             ${{ matrix.image }} -o json --file /work/reports/grype-app.json
 
-      # Dependency-Check downloads the NVD database (about 300 MB) the first time, which needs a free NVD key.
-      # The database is kept in GitHub's cache, so later runs only download what changed.
-      - name: Dependency-Check (get the saved database)
-        if: env.NVD_API_KEY != ''
+      # Dependency-Check reads the NVD database prepared by the "Update NVD database" job (--noupdate).
+      - name: Dependency-Check (get the NVD database)
+        id: nvd
+        if: env.NVD_API_KEY != '' && needs.nvd.result == 'success'
         uses: actions/cache/restore@v4
         with:
           path: dc-data
-          key: dependency-check-${{ github.run_id }}
+          key: ${{ needs.nvd.outputs.key }}
           restore-keys: dependency-check-
 
       - name: OWASP Dependency-Check
-        if: env.NVD_API_KEY != ''
+        if: steps.nvd.outputs.cache-matched-key != ''
         continue-on-error: true
-        timeout-minutes: 45
+        timeout-minutes: 30
         run: |
-          mkdir -p dc-data && chmod 777 dc-data reports
-          docker run --rm -e NVD_API_KEY -v "$PWD/target:/src:ro" -v "$PWD/reports:/report" \
+          chmod -R 777 dc-data reports
+          docker run --rm -v "$PWD/target:/src:ro" -v "$PWD/reports:/report" \
             -v "$PWD/dc-data:/usr/share/dependency-check/data" owasp/dependency-check:latest \
-            --scan /src --format JSON --out /report --project "${{ matrix.alias }}" --nvdApiKey "$NVD_API_KEY" \
+            --scan /src --format JSON --out /report --project "${{ matrix.alias }}" --noupdate \
             --disableOssIndex --disableYarnAudit --disablePnpmAudit --exclude "**/node_modules/**" --exclude "**/.git/**"
           mv reports/dependency-check-report.json reports/dependency-check.json
-
-      - name: Dependency-Check (save the database for next time)
-        if: env.NVD_API_KEY != '' && matrix.slug == 'project-g'   # one copy is enough
-        continue-on-error: true
-        uses: actions/cache/save@v4
-        with:
-          path: dc-data
-          key: dependency-check-${{ github.run_id }}
-
-      - name: Dependency-Check skipped
-        if: env.NVD_API_KEY == ''
-        run: echo "::notice::OWASP Dependency-Check skipped - add the NVD_API_KEY secret to turn it on (README section 12)."
 
       # Dependency-Track is a server, like SonarQube: a fresh one per run, thrown away at the end.
       # It gets the project's parts list (SBOM, made by Trivy) and matches it against Google's OSV database.
@@ -372,7 +425,8 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.check.outputs.todo_web) }}
     steps:
-      - name: Start the website
+      - name: Start the website (one Docker image)
+        if: matrix.image != ''
         run: |
           mkdir -p reports && chmod 777 reports
           docker run -d --name app --network host ${{ matrix.image }}
@@ -382,6 +436,47 @@ jobs:
           done
           echo "website did not start"; docker logs app | tail -50; exit 1
 
+      # Apps made of many services (Online Boutique has 11) run on Kubernetes. We start a small throwaway
+      # Kubernetes cluster inside this job with "kind", install the project's released version from its own
+      # Kubernetes file, and open the shop's front page on localhost:8090 for the DAST tools.
+      - name: Prepare a Kubernetes cluster (many services)
+        if: matrix.k8s != ''
+        run: |
+          mkdir -p reports && chmod 777 reports
+          cat > kind.yaml <<'KIND'
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+            - role: control-plane
+              extraPortMappings:
+                - containerPort: 30080
+                  hostPort: 8090
+          KIND
+
+      - name: Start the Kubernetes cluster
+        if: matrix.k8s != ''
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: dast
+          config: kind.yaml
+
+      - name: Start the website (Kubernetes)
+        if: matrix.k8s != ''
+        run: |
+          curl -sSfL -o app.yaml "https://raw.githubusercontent.com/${{ matrix.repo }}/${{ matrix.sha }}/${{ matrix.k8s }}"
+          kubectl apply -f app.yaml
+          # The load generator only creates fake shoppers; it would add noise to the scan.
+          kubectl delete deployment loadgenerator --ignore-not-found
+          # Make the shop's front page reachable from this machine on port 8090.
+          kubectl patch service frontend-external -p \
+            '{"spec":{"type":"NodePort","ports":[{"name":"http","port":80,"targetPort":8080,"nodePort":30080}]}}'
+          kubectl wait --for=condition=available deployment --all --timeout=600s || { kubectl get pods; exit 1; }
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null "${{ matrix.url }}" && echo "website is up" && exit 0
+            sleep 5
+          done
+          echo "website did not start"; kubectl get pods; kubectl logs deployment/frontend --tail=50; exit 1
+
       - name: ZAP
         continue-on-error: true
         run: |
@@ -389,14 +484,17 @@ jobs:
             zap-baseline.py -t "${{ matrix.url }}" -J zap.json -I -m 3 || [ $? -ne 3 ]
           # ZAP says "1" when it finds a serious problem. That is a result, not an error; only 3 means ZAP itself broke.
 
-      # Nuclei runs known-problem checks ("templates"); it does not crawl. Info-level checks are left out (noise).
+      # Nuclei runs its known-problem checks ("templates"); it does not crawl. Info-level, denial-of-service,
+      # fuzzing and intrusive checks are left out.
       - name: Nuclei
         continue-on-error: true
         timeout-minutes: 25
         run: |
           docker run --rm --network host -v "$PWD/reports:/out" projectdiscovery/nuclei:latest \
-            -u "${{ matrix.url }}" -tags cve,misconfig,exposure,xss,sqli,lfi,redirect,default-login \
-            -es info -rl 50 -c 25 -silent -disable-update-check -je /out/nuclei.json
+            -u "${{ matrix.url }}" -es info -etags dos,fuzz,intrusive -rl 100 -c 25 -timeout 5 \
+            -stats -si 60 -disable-update-check -je /out/nuclei.json
+          # Nuclei writes no file when it finds nothing; an empty list shows the scan did run.
+          [ -f reports/nuclei.json ] || echo '[]' > reports/nuclei.json
 
       - name: Wapiti
         continue-on-error: true
@@ -498,7 +596,9 @@ jobs:
           v=$(latest_version kubescape/kubescape)
           curl -sSfL -o kubescape "https://github.com/kubescape/kubescape/releases/download/$v/kubescape_${v#v}_linux_amd64"
           chmod +x kubescape
-          ./kubescape scan target --format sarif --output reports/kubescape.json --keep-local
+          ./kubescape scan target --format sarif --output reports/kubescape.sarif --keep-local
+          # Kubescape adds ".sarif" to the name itself; the portal reads .json files.
+          for f in reports/kubescape*.sarif; do [ -s "$f" ] && mv "$f" reports/kubescape.json; done; true
 
       # Conftest has no checks of its own; ours are in the policy/ folder (Dockerfiles + Kubernetes).
       # Helm templates ({{ ... }}) are not plain YAML, so they are left out.
@@ -506,12 +606,18 @@ jobs:
         continue-on-error: true
         working-directory: target
         run: |
-          { find . -type f -name 'Dockerfile*' -not -path '*/node_modules/*'
-            grep -rlE --include='*.yaml' --include='*.yml' --exclude-dir=node_modules --exclude-dir=.git \
-              --exclude-dir=templates '^kind:' . || true; } | head -300 > /tmp/conftest-files
-          if [ ! -s /tmp/conftest-files ]; then echo "No Dockerfiles or Kubernetes files"; exit 0; fi
-          docker run --rm -v "$PWD:/project:ro" -v "$PWD/../portal/policy:/policy:ro" openpolicyagent/conftest:latest \
-            test --policy /policy --all-namespaces --no-fail -o json $(cat /tmp/conftest-files) > ../reports/conftest.json
+          find . -type f -name 'Dockerfile*' -not -path '*/node_modules/*' | head -300 > /tmp/dockerfiles
+          grep -rlE --include='*.yaml' --include='*.yml' --exclude-dir=node_modules --exclude-dir=.git \
+            --exclude-dir=templates '^kind:' . | head -300 > /tmp/k8sfiles || true
+          conftest() {
+            docker run --rm -v "$PWD:/project:ro" -v "$PWD/../portal/policy:/policy:ro" openpolicyagent/conftest:latest \
+              test --policy /policy --all-namespaces --no-fail -o json "$@"
+          }
+          echo '[]' > /tmp/c1.json; echo '[]' > /tmp/c2.json
+          # --parser dockerfile: also reads files like "Dockerfile_desktop", which Conftest does not recognise by name.
+          if [ -s /tmp/dockerfiles ]; then conftest --parser dockerfile $(cat /tmp/dockerfiles) > /tmp/c1.json; fi
+          if [ -s /tmp/k8sfiles ]; then conftest $(cat /tmp/k8sfiles) > /tmp/c2.json; fi
+          jq -s 'add' /tmp/c1.json /tmp/c2.json > ../reports/conftest.json
 
       # Hadolint checks Dockerfiles against best practices (running as root, unpinned versions, ...).
       # It exits with 1 when it finds something; that is a result, not an error.
@@ -540,7 +646,7 @@ jobs:
   # ---------------------------------------------------------------- collect, gate, send
   report:
     name: report ${{ matrix.alias }}
-    needs: [check, sast, sca, dast, iac]
+    needs: [check, sast, sca, dast, iac, nvd]
     if: always() && needs.check.outputs.todo != '[]' && needs.check.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
