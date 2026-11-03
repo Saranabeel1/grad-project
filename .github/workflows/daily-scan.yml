@@ -1,11 +1,21 @@
 name: daily-scan
 
-# Runs our five scanners on a few public projects whenever one of them gets a new commit, by itself.
+# Runs our 20 scanners (5 per category) on a few public projects whenever one of them gets a new commit, by itself.
 # The projects belong to other people, so GitHub cannot tell us when they push. Instead a quick check
 # runs every 15 minutes, compares each project's latest commit with the last one we scanned, and only
 # scans the projects that changed. Nobody has to change any code: the owners keep pushing, so results stay new.
+#
+# The scanners are split into four jobs that run at the same time, one per category:
+#   SAST  Semgrep, SonarQube, CodeQL, Bearer, Bandit
+#   SCA   Trivy, OSV-Scanner, Grype, OWASP Dependency-Check, OWASP Dependency-Track
+#   DAST  ZAP, Nuclei, Wapiti, Nikto, Dastardly (only for projects with a website to start)
+#   IaC   Checkov, KICS, Kubescape, Conftest, Hadolint (Trivy's misconfiguration checks are shown here too)
+# A last job ("report") collects their reports, runs the Security Gate and sends everything to the portal.
+# Each scanner step has continue-on-error, so one tool failing never stops the others.
+#
 # Results are sent straight to the portal when the PORTAL_URL and PORTAL_API_KEY secrets are set
 # (real-time push), and are always saved as files ("artifacts") that scripts/fetch_daily.py can bring in later.
+# OWASP Dependency-Check also needs the NVD_API_KEY secret (free, see README section 12); without it, it is skipped.
 
 on:
   schedule:
@@ -25,6 +35,7 @@ jobs:
       actions: read           # to look up the cache entries
     outputs:
       todo: ${{ steps.new.outputs.todo }}
+      todo_web: ${{ steps.new.outputs.todo_web }}
     steps:
       - name: Look for new commits
         id: new
@@ -32,21 +43,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' }}
           # alias: the name shown in the portal. repo: the public project.
-          # image + url: a running copy of the website, for ZAP (DAST). Leave empty to skip ZAP.
+          # image + url: a running copy of the website, for the DAST tools. Leave empty to skip DAST.
+          # codeql: the languages CodeQL should look at (ones that need no build step).
           PROJECTS: |
             [
               {"alias": "Project G", "repo": "juice-shop/juice-shop",
-               "image": "bkimminich/juice-shop:latest", "url": "http://localhost:3000"},
+               "image": "bkimminich/juice-shop:latest", "url": "http://localhost:3000",
+               "codeql": "javascript-typescript"},
               {"alias": "Project H", "repo": "WebGoat/WebGoat",
-               "image": "webgoat/webgoat:latest", "url": "http://localhost:8080/WebGoat"},
+               "image": "webgoat/webgoat:latest", "url": "http://localhost:8080/WebGoat",
+               "codeql": "java-kotlin,javascript-typescript"},
               {"alias": "Project I", "repo": "GoogleCloudPlatform/microservices-demo",
-               "image": "", "url": ""}
+               "image": "", "url": "",
+               "codeql": "python,csharp,java-kotlin,javascript-typescript"}
             ]
         run: |
           todo='[]'
           while read -r p; do
             alias=$(jq -r .alias <<< "$p"); repo=$(jq -r .repo <<< "$p")
-            sha=$(git ls-remote "https://github.com/$repo" HEAD | cut -f1)
+            head=$(git ls-remote --symref "https://github.com/$repo" HEAD)
+            sha=$(awk '$2 == "HEAD" && $1 != "ref:" {print $1}' <<< "$head")
+            branch=$(awk '$1 == "ref:" {sub("refs/heads/", "", $2); print $2}' <<< "$head")
             slug=$(tr 'A-Z ' 'a-z-' <<< "$alias")
             key="scanned-$slug-$sha"
             seen=$(gh cache list --repo "$GITHUB_REPOSITORY" --key "$key" --json key --jq length)
@@ -54,83 +71,109 @@ jobs:
               echo "$alias: could not read the latest commit, skipped"
             elif [ "$FORCE" = true ] || [ "$seen" = 0 ]; then
               echo "$alias: new commit ${sha:0:7}, will scan"
-              todo=$(jq -c --argjson p "$p" --arg sha "$sha" --arg key "$key" '. + [$p + {sha: $sha, key: $key}]' <<< "$todo")
+              todo=$(jq -c --argjson p "$p" --arg sha "$sha" --arg branch "$branch" --arg key "$key" --arg slug "$slug" \
+                '. + [$p + {sha: $sha, branch: $branch, key: $key, slug: $slug}]' <<< "$todo")
             else
               echo "$alias: ${sha:0:7} already scanned, nothing to do"
             fi
           done < <(jq -c '.[]' <<< "$PROJECTS")
           echo "todo=$todo" >> "$GITHUB_OUTPUT"
+          echo "todo_web=$(jq -c '[.[] | select(.image != "")]' <<< "$todo")" >> "$GITHUB_OUTPUT"
 
-  scan:
-    name: scan ${{ matrix.alias }}
+  # ---------------------------------------------------------------- SAST: reads the source code
+  sast:
+    name: SAST ${{ matrix.alias }}
     needs: check
     if: needs.check.outputs.todo != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     permissions:
       contents: read
+      actions: read
+      security-events: read   # CodeQL; results are saved as a file, not uploaded to GitHub
     strategy:
-      fail-fast: false      # one project failing does not stop the others
+      fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.check.outputs.todo) }}
     steps:
-      - name: Get the project's latest code
+      - name: Get the project's code (the commit the check found)
         uses: actions/checkout@v4
         with:
           repository: ${{ matrix.repo }}
+          ref: ${{ matrix.sha }}
           path: target
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Remember which version was scanned
-        run: |
-          mkdir -p reports
-          cd target
-          printf '{"alias": "%s", "repo": "%s", "commit_sha": "%s", "branch": "%s", "scanned_at": "%s"}\n' \
-            "${{ matrix.alias }}" "${{ matrix.repo }}" "$(git rev-parse HEAD)" \
-            "$(git rev-parse --abbrev-ref HEAD)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ../reports/target.json
-          cat ../reports/target.json
+      - name: Get our scripts
+        uses: actions/checkout@v4
+        with:
+          path: portal
+          sparse-checkout: |
+            scripts
+            policy
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install Semgrep and Checkov
-        run: pip install semgrep checkov
+      - name: Install Semgrep and Bandit
+        run: |
+          mkdir -p reports
+          pip install semgrep bandit
 
-      - name: Semgrep (SAST)
+      - name: Semgrep
         continue-on-error: true
         working-directory: target
         run: semgrep scan --config p/default --metrics=off --json --output ../reports/semgrep.json .
 
-      # --offline-scan: do not ask Maven Central about Java libraries; it blocks GitHub's machines
-      # when too many ask at once ("429 Too Many Requests"). Trivy's own list of known problems is still used.
-      - name: Trivy on the code (SCA + IaC)
+      - name: Bandit (Python only)
         continue-on-error: true
-        run: |
-          docker run --rm -v "$PWD:/work" aquasec/trivy:latest fs --quiet --offline-scan \
-            --scanners vuln,misconfig --format json --output /work/reports/trivy-code.json /work/target
+        run: bandit -r target -f json -o reports/bandit.json -q --exit-zero -x '*/node_modules/*'
 
-      - name: Trivy on the released app (SCA)
-        if: matrix.image != ''
+      # Bearer downloads its rules from GitHub when it starts. "gitleaks" (leaked keys) findings are skipped by the reader.
+      - name: Bearer
         continue-on-error: true
+        timeout-minutes: 25
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" aquasec/trivy:latest \
-            image --quiet --scanners vuln --format json --output /work/reports/trivy-app.json ${{ matrix.image }}
+          latest_version() {  # newest release, read from the project's git tags (no GitHub API limit)
+            git ls-remote --tags --refs "https://github.com/$1" | awk -F/ '{print $3}' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+          }
+          v=$(latest_version Bearer/bearer)
+          curl -sSfL "https://github.com/Bearer/bearer/releases/download/$v/bearer_${v#v}_linux_amd64.tar.gz" | tar xz bearer
+          ./bearer scan target --format json --output reports/bearer.json --quiet \
+            --exit-code 0 --disable-version-check --skip-path "node_modules,**/node_modules/**"
 
-      - name: Checkov (IaC)
+      # CodeQL: GitHub's own scanner. "upload: never" keeps the results in a file for the portal
+      # instead of the Security tab of this repository (they are someone else's findings).
+      - name: CodeQL (prepare)
+        id: codeql
         continue-on-error: true
-        run: checkov -d target --quiet --compact --soft-fail -o json --output-file-path reports
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.codeql }}
+          build-mode: none
+          source-root: target
+
+      - name: CodeQL (analyse)
+        if: steps.codeql.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 45
+        uses: github/codeql-action/analyze@v3
+        with:
+          upload: never
+          output: codeql-results
+          category: daily-${{ matrix.slug }}
+
+      - name: CodeQL (save results)
+        if: steps.codeql.outcome == 'success'
+        continue-on-error: true
+        run: for f in codeql-results/*.sarif; do cp "$f" "reports/codeql-$(basename "$f" .sarif).json"; done
 
       # SonarQube keeps its results on a server, so we start a fresh one just for this run,
       # scan the code, save the security results to reports/sonarqube.json, then stop it.
-      - name: Get our scripts (for SonarQube)
-        uses: actions/checkout@v4
-        with:
-          path: portal
-          sparse-checkout: scripts
-          persist-credentials: false
-
       - name: Start SonarQube
         id: sonar
         continue-on-error: true
@@ -151,10 +194,10 @@ jobs:
             -d name=daily-scan -d type=USER_TOKEN | python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
           echo "::add-mask::$TOKEN"
           echo "SONAR_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-          echo "SONAR_PROJECT=$(echo '${{ matrix.alias }}' | tr 'A-Z ' 'a-z-')" >> "$GITHUB_ENV"
+          echo "SONAR_PROJECT=${{ matrix.slug }}" >> "$GITHUB_ENV"
 
       # sonar.java.binaries: Java code is normally built first; an empty folder lets SonarQube scan it unbuilt.
-      - name: SonarQube (SAST)
+      - name: SonarQube
         if: steps.sonar.outcome == 'success'
         continue-on-error: true
         run: |
@@ -170,9 +213,168 @@ jobs:
         if: always() && steps.sonar.outcome != 'skipped'
         run: docker rm -f sonarqube || true
 
-      - name: Start the website for ZAP
-        if: matrix.image != ''
+      - name: What was saved
+        if: always()
+        run: ls -la reports
+
+      - name: Keep the reports for the report job
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parts-${{ matrix.slug }}-sast
+          path: reports/
+          retention-days: 1
+
+  # ---------------------------------------------------------------- SCA: checks the libraries the project uses
+  sca:
+    name: SCA ${{ matrix.alias }}
+    needs: check
+    if: needs.check.outputs.todo != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.check.outputs.todo) }}
+    env:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+    steps:
+      - name: Get the project's code (the commit the check found)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          ref: ${{ matrix.sha }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Get our scripts
+        uses: actions/checkout@v4
+        with:
+          path: portal
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      # --offline-scan: do not ask Maven Central about Java libraries; it blocks GitHub's machines
+      # when too many ask at once ("429 Too Many Requests"). Trivy's own list of known problems is still used.
+      # Trivy's misconfiguration results (--scanners misconfig) are shown under IaC in the portal.
+      - name: Trivy on the code (SCA + IaC)
+        continue-on-error: true
         run: |
+          mkdir -p reports
+          docker run --rm -v "$PWD:/work" aquasec/trivy:latest fs --quiet --offline-scan \
+            --scanners vuln,misconfig --format json --output /work/reports/trivy-code.json /work/target
+
+      - name: Trivy on the released app
+        if: matrix.image != ''
+        continue-on-error: true
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" aquasec/trivy:latest \
+            image --quiet --scanners vuln --format json --output /work/reports/trivy-app.json ${{ matrix.image }}
+
+      # Exit code 1 means "found vulnerabilities", 128 means "no lockfiles found": both are results, not errors.
+      - name: OSV-Scanner
+        continue-on-error: true
+        run: |
+          curl -sSfL -o osv-scanner https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64
+          chmod +x osv-scanner
+          code=0
+          ./osv-scanner scan source -r --format json --output-file reports/osv-scanner.json target || code=$?
+          [ "$code" -le 1 ] || [ "$code" -eq 128 ]
+
+      - name: Grype on the code
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/work" anchore/grype:latest dir:/work/target -o json --file /work/reports/grype-code.json
+
+      - name: Grype on the released app
+        if: matrix.image != ''
+        continue-on-error: true
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" anchore/grype:latest \
+            ${{ matrix.image }} -o json --file /work/reports/grype-app.json
+
+      # Dependency-Check downloads the NVD database (about 300 MB) the first time, which needs a free NVD key.
+      # The database is kept in GitHub's cache, so later runs only download what changed.
+      - name: Dependency-Check (get the saved database)
+        if: env.NVD_API_KEY != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: dc-data
+          key: dependency-check-${{ github.run_id }}
+          restore-keys: dependency-check-
+
+      - name: OWASP Dependency-Check
+        if: env.NVD_API_KEY != ''
+        continue-on-error: true
+        timeout-minutes: 45
+        run: |
+          mkdir -p dc-data && chmod 777 dc-data reports
+          docker run --rm -e NVD_API_KEY -v "$PWD/target:/src:ro" -v "$PWD/reports:/report" \
+            -v "$PWD/dc-data:/usr/share/dependency-check/data" owasp/dependency-check:latest \
+            --scan /src --format JSON --out /report --project "${{ matrix.alias }}" --nvdApiKey "$NVD_API_KEY" \
+            --disableOssIndex --disableYarnAudit --disablePnpmAudit --exclude "**/node_modules/**" --exclude "**/.git/**"
+          mv reports/dependency-check-report.json reports/dependency-check.json
+
+      - name: Dependency-Check (save the database for next time)
+        if: env.NVD_API_KEY != '' && matrix.slug == 'project-g'   # one copy is enough
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: dc-data
+          key: dependency-check-${{ github.run_id }}
+
+      - name: Dependency-Check skipped
+        if: env.NVD_API_KEY == ''
+        run: echo "::notice::OWASP Dependency-Check skipped - add the NVD_API_KEY secret to turn it on (README section 12)."
+
+      # Dependency-Track is a server, like SonarQube: a fresh one per run, thrown away at the end.
+      # It gets the project's parts list (SBOM, made by Trivy) and matches it against Google's OSV database.
+      - name: Dependency-Track
+        continue-on-error: true
+        timeout-minutes: 45
+        run: |
+          docker run -d --name dtrack -p 8081:8080 dependencytrack/apiserver:latest
+          docker run --rm -v "$PWD:/work" aquasec/trivy:latest fs --quiet --offline-scan \
+            --format cyclonedx --output /work/sbom.cdx.json /work/target
+          DT_URL=http://localhost:8081 python3 portal/scripts/export_dependency_track.py \
+            --sbom sbom.cdx.json --project "${{ matrix.slug }}" --out reports/dependency-track.json --container dtrack
+
+      - name: Stop Dependency-Track
+        if: always()
+        run: docker rm -f dtrack || true
+
+      - name: What was saved
+        if: always()
+        run: ls -la reports
+
+      - name: Keep the reports for the report job
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parts-${{ matrix.slug }}-sca
+          path: reports/
+          retention-days: 1
+
+  # ---------------------------------------------------------------- DAST: attacks a running copy of the website
+  dast:
+    name: DAST ${{ matrix.alias }}
+    needs: check
+    if: needs.check.outputs.todo_web != '[]' && needs.check.outputs.todo_web != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.check.outputs.todo_web) }}
+    steps:
+      - name: Start the website
+        run: |
+          mkdir -p reports && chmod 777 reports
           docker run -d --name app --network host ${{ matrix.image }}
           for i in $(seq 1 60); do
             curl -sf -o /dev/null "${{ matrix.url }}" && echo "website is up" && exit 0
@@ -180,18 +382,206 @@ jobs:
           done
           echo "website did not start"; docker logs app | tail -50; exit 1
 
-      - name: ZAP (DAST)
-        if: matrix.image != ''
+      - name: ZAP
         continue-on-error: true
         run: |
-          chmod 777 reports
           docker run --rm --network host -v "$PWD/reports:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t "${{ matrix.url }}" -J zap.json -I -m 3 || [ $? -ne 3 ]
           # ZAP says "1" when it finds a serious problem. That is a result, not an error; only 3 means ZAP itself broke.
 
+      # Nuclei runs known-problem checks ("templates"); it does not crawl. Info-level checks are left out (noise).
+      - name: Nuclei
+        continue-on-error: true
+        timeout-minutes: 25
+        run: |
+          docker run --rm --network host -v "$PWD/reports:/out" projectdiscovery/nuclei:latest \
+            -u "${{ matrix.url }}" -tags cve,misconfig,exposure,xss,sqli,lfi,redirect,default-login \
+            -es info -rl 50 -c 25 -silent -disable-update-check -je /out/nuclei.json
+
+      - name: Wapiti
+        continue-on-error: true
+        timeout-minutes: 25
+        run: |
+          pipx install --quiet wapiti3
+          wapiti -u "${{ matrix.url }}/" --flush-session --max-scan-time 900 -d 3 --no-bugreport \
+            -f json -o reports/wapiti.json
+
+      - name: Nikto
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          sudo apt-get install -y -qq libjson-perl libxml-writer-perl libnet-ssleay-perl > /dev/null
+          git clone --quiet --depth 1 https://github.com/sullo/nikto.git /tmp/nikto
+          perl /tmp/nikto/program/nikto.pl -h "${{ matrix.url }}" -Format json -o reports/nikto.json \
+            -maxtime 900s -ask no -nointeractive || true
+
+      # Dastardly: Burp Suite's free scanner for pipelines (PortSwigger). Each scan stops after 10 minutes.
+      # It writes a JUnit XML report, which report_readers.py reads.
+      - name: Dastardly (Burp)
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          docker run --rm --user "$(id -u)" --network host -v "$PWD/reports:/report:rw" \
+            -e BURP_START_URL="${{ matrix.url }}" -e BURP_REPORT_FILE_PATH=/report/dastardly.xml \
+            public.ecr.aws/portswigger/dastardly:latest || true
+          test -s reports/dastardly.xml
+
       - name: What was saved
         if: always()
         run: ls -la reports
+
+      - name: Keep the reports for the report job
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parts-${{ matrix.slug }}-dast
+          path: reports/
+          retention-days: 1
+
+  # ---------------------------------------------------------------- IaC: checks Dockerfiles, Kubernetes, Terraform...
+  iac:
+    name: IaC ${{ matrix.alias }}
+    needs: check
+    if: needs.check.outputs.todo != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.check.outputs.todo) }}
+    steps:
+      - name: Get the project's code (the commit the check found)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          ref: ${{ matrix.sha }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Get our Conftest rules
+        uses: actions/checkout@v4
+        with:
+          path: portal
+          sparse-checkout: policy
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Checkov
+        continue-on-error: true
+        run: |
+          mkdir -p reports && chmod 777 reports
+          pip install checkov
+          checkov -d target --quiet --compact --soft-fail -o json --output-file-path reports
+
+      # --disable-secrets: KICS's password/key search is turned off, as for the other tools.
+      - name: KICS
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD/target:/path:ro" -v "$PWD/reports:/out" checkmarx/kics:latest scan \
+            -p /path -o /out --output-name kics --report-formats json --ignore-on-exit all --silent \
+            --disable-secrets --exclude-paths "/path/node_modules,/path/.git"
+
+      # --keep-local: the results stay here and are not sent to Kubescape's cloud service.
+      - name: Kubescape
+        continue-on-error: true
+        run: |
+          latest_version() {  # newest release, read from the project's git tags (no GitHub API limit)
+            git ls-remote --tags --refs "https://github.com/$1" | awk -F/ '{print $3}' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+          }
+          v=$(latest_version kubescape/kubescape)
+          curl -sSfL -o kubescape "https://github.com/kubescape/kubescape/releases/download/$v/kubescape_${v#v}_linux_amd64"
+          chmod +x kubescape
+          ./kubescape scan target --format sarif --output reports/kubescape.json --keep-local
+
+      # Conftest has no checks of its own; ours are in the policy/ folder (Dockerfiles + Kubernetes).
+      # Helm templates ({{ ... }}) are not plain YAML, so they are left out.
+      - name: Conftest
+        continue-on-error: true
+        working-directory: target
+        run: |
+          { find . -type f -name 'Dockerfile*' -not -path '*/node_modules/*'
+            grep -rlE --include='*.yaml' --include='*.yml' --exclude-dir=node_modules --exclude-dir=.git \
+              --exclude-dir=templates '^kind:' . || true; } | head -300 > /tmp/conftest-files
+          if [ ! -s /tmp/conftest-files ]; then echo "No Dockerfiles or Kubernetes files"; exit 0; fi
+          docker run --rm -v "$PWD:/project:ro" -v "$PWD/../portal/policy:/policy:ro" openpolicyagent/conftest:latest \
+            test --policy /policy --all-namespaces --no-fail -o json $(cat /tmp/conftest-files) > ../reports/conftest.json
+
+      # Hadolint checks Dockerfiles against best practices (running as root, unpinned versions, ...).
+      # It exits with 1 when it finds something; that is a result, not an error.
+      - name: Hadolint
+        continue-on-error: true
+        run: |
+          curl -sSfL -o hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-linux-x86_64
+          chmod +x hadolint
+          find target -type f -name 'Dockerfile*' -not -path '*/node_modules/*' | head -300 > /tmp/dockerfiles
+          if [ ! -s /tmp/dockerfiles ]; then echo "No Dockerfiles"; exit 0; fi
+          ./hadolint -f json $(cat /tmp/dockerfiles) > reports/hadolint.json || true
+          test -s reports/hadolint.json
+
+      - name: What was saved
+        if: always()
+        run: ls -la reports
+
+      - name: Keep the reports for the report job
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parts-${{ matrix.slug }}-iac
+          path: reports/
+          retention-days: 1
+
+  # ---------------------------------------------------------------- collect, gate, send
+  report:
+    name: report ${{ matrix.alias }}
+    needs: [check, sast, sca, dast, iac]
+    if: always() && needs.check.outputs.todo != '[]' && needs.check.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.check.outputs.todo) }}
+    steps:
+      - name: Get our scripts
+        uses: actions/checkout@v4
+        with:
+          path: portal
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect the four jobs' reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: parts-${{ matrix.slug }}-*
+          path: reports
+          merge-multiple: true
+
+      - name: Remember which version was scanned
+        run: |
+          mkdir -p reports
+          printf '{"alias": "%s", "repo": "%s", "commit_sha": "%s", "branch": "%s", "scanned_at": "%s"}\n' \
+            "${{ matrix.alias }}" "${{ matrix.repo }}" "${{ matrix.sha }}" "${{ matrix.branch }}" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > reports/target.json
+          cat reports/target.json
+          ls -la reports
+
+      # Security Gate (as on the Pipeline Status page): Critical/High findings fail the run,
+      # Medium/Low are only warnings. The results are still sent and saved below, marked as failed.
+      - name: Security Gate
+        run: python portal/scripts/security_gate.py reports
 
       # Real-time push: the results reach the portal as soon as this project's scan finishes.
       # Needs two repository secrets: PORTAL_URL (the portal's public address) and PORTAL_API_KEY.
@@ -213,7 +603,7 @@ jobs:
         with:
           name: daily-${{ matrix.alias }}
           path: reports/
-          retention-days: 7    # hourly runs make many files; the portal already has the results
+          retention-days: 7    # frequent runs make many files; the portal already has the results
 
       # Remember this commit as scanned, so the 15-minute check skips it until the project changes again.
       - name: Remember this commit was scanned
