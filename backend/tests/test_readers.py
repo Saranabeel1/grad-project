@@ -83,3 +83,22 @@ def test_dastardly_reads_issues_only():
 def test_other_xml_is_ignored():
     zap = ROOT / "sample-scans" / "zap-results-first-scan.xml"
     assert rr.read_report(zap.name, zap.read_bytes()) == {}
+
+
+def test_dastardly_survives_odd_characters_and_doctype_in_text():
+    xml = (b'<?xml version="1.0"?><testsuites name="Dastardly scan results"><testsuite name="x">'
+           b'<testcase name="Info leak"><failure message="Info leak found at http://h/p" type="Low">'
+           b'<![CDATA[Severity: Low\nPath: /p\nbody: <!DOCTYPE html>]]> &#0; bad</failure></testcase>'
+           b'</testsuite></testsuites>')
+    found = rr.read_report("dastardly.xml", xml)["dastardly"]
+    assert [(f["title"], f["severity"], f["file"]) for f in found] == [("Info leak", "low", "/p")]
+
+
+def test_codeql_rules_in_query_packs_are_used():
+    doc = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "CodeQL", "rules": []}, "extensions": [
+        {"name": "codeql/javascript-queries", "rules": [{"id": "js/xss", "shortDescription": {"text": "XSS"},
+                                                         "properties": {"security-severity": "6.1",
+                                                                        "tags": ["external/cwe/cwe-079"]}}]}]},
+        "results": [{"ruleId": "js/xss", "message": {"text": "m"}, "locations": []}]}]}
+    f = rr.read_sarif(doc)["codeql"][0]
+    assert (f["title"], f["severity"], f["cwe"]) == ("XSS", "medium", "CWE-79")
